@@ -11,3 +11,5 @@ configure_file(
 add_project_arguments([
   '-I' + meson.build_root(),
 ], language: 'c')
+
+subdir('mogwai-monitord')
