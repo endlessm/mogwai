@@ -8,12 +8,21 @@ project('mogwai','c',
   ],
 )
 
+prefix = get_option('prefix')
+datadir = join_paths(prefix, get_option('datadir'))
+libdir = join_paths(prefix, get_option('libdir'))
+libexecdir = join_paths(prefix, get_option('libexecdir'))
+localedir = join_paths(prefix, get_option('localedir'))
+
 config_h = configuration_data()
+config_h.set_quoted('GETTEXT_PACKAGE', meson.project_name())
+config_h.set_quoted('LOCALEDIR', localedir)
 configure_file(
   output: 'config.h',
   configuration: config_h,
 )
 add_project_arguments([
+  '-I' + meson.source_root(),
   '-I' + meson.build_root(),
 ], language: 'c')
 
@@ -83,3 +92,10 @@ foreach arg: test_args
     add_project_arguments(arg, language : 'c')
   endif
 endforeach
+
+enable_installed_tests = get_option('installed_tests')
+test_template = files('template.test.in')
+
+subdir('libhelper')
+subdir('libmogwai-schedule')
+subdir('mogwai-scheduled')

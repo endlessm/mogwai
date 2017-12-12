@@ -1,0 +1,12 @@
+option(
+  'scheduler_daemon_user',
+  type: 'string',
+  value: 'mogwai-scheduled',
+  description: 'username to run the scheduler daemon as',
+)
+option(
+  'installed_tests',
+  type: 'boolean',
+  value: false,
+  description: 'enable installed tests'
+)
