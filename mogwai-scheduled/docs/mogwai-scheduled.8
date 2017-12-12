@@ -1,0 +1,99 @@
+.\" Manpage for mogwai\-scheduled.
+.\" Documentation is under the same licence as the Mogwai package.
+.TH man 8 "12 Dec 2017" "1.0" "mogwai\-scheduled man page"
+.\"
+.SH NAME
+.IX Header "NAME"
+mogwai\-scheduled — Download Scheduling Daemon
+.\"
+.SH SYNOPSIS
+.IX Header "SYNOPSIS"
+.\"
+\fBmogwai\-scheduled [\-a \fPbus\-address\fB]
+.\"
+.SH DESCRIPTION
+.IX Header "DESCRIPTION"
+.\"
+\fBmogwai\-scheduled\fP is a scheduler for large downloads. It receives requests
+for starting downloads from various client programs, schedules them according
+to current bandwidth and cost limitations, and notifies the client programs when
+to download (and how much to download).
+.PP
+\fBmogwai\-scheduled\fP is designed to be run by \fBsystemd\fP(1), being
+D\-Bus activated. There should be no need to run \fBmogwai\-scheduled\fP
+manually.
+.\"
+.SH OPTIONS
+.IX Header "OPTIONS"
+.\"
+.IP "\fB\-a\fP, \fB\-\-bus\-address=\fP"
+Address of a D\-Bus message bus to connect to. This is intended for debugging
+use only. (Default: The system bus.)
+.\"
+.SH "ENVIRONMENT"
+.IX Header "ENVIRONMENT"
+.\"
+\fPmogwai\-scheduled\fP supports the standard GLib environment variables for
+debugging. These variables are \fBnot\fP intended to be used in production:
+.\"
+.IP \fI$G_MESSAGES_DEBUG\fP 4
+.IX Item "$G_MESSAGES_DEBUG"
+This variable can contain one or more debug domain names to display debug output
+for. The value \fIall\fP will enable all debug output. The default is for no
+debug output to be enabled.
+.\"
+.SH "EXIT STATUS"
+.IX Header "EXIT STATUS"
+.\"
+\fBmogwai\-scheduled\fP may return one of several error codes if it encounters
+problems.
+.\"
+.IP "0" 4
+.IX Item "0"
+No problems occurred. The scheduler ran, responded to zero or more requests, and
+then exited due to being explicitly closed, or timing out due to finishing all
+requests.
+.\"
+.IP "1" 4
+.IX Item "1"
+An invalid option was passed to \fBmogwai\-scheduled\fP on startup.
+.\"
+.IP "2" 4
+.IX Item "2"
+The D\-Bus name for \fBmogwai\-scheduled\fP was not available.
+.\"
+.IP "3" 4
+.IX Item "3"
+\fBmogwai\-scheduled\fP was run in an inappropriate environment, for example
+as the root user.
+.\"
+.SH "FILES"
+.IX Header "FILES"
+.\"
+.IP \fI/lib/systemd/system/mogwai\-scheduled.service\fP 4
+.IX Item "/lib/systemd/system/mogwai\-scheduled.service"
+\fBsystemd\fP(1) service file which specifies the runtime environment for
+\fBmogwai\-scheduled\fP. See \fBsystemd.service\fP(5).
+.\"
+.SH "SEE ALSO"
+.IX Header "SEE ALSO"
+.\"
+TODO,
+.\"
+.SH BUGS
+.IX Header "BUGS"
+.\"
+Any bugs which are found should be reported on the project website:
+.br
+\fIhttps://support.endlessm.com/\fP
+.\"
+.SH AUTHOR
+.IX Header "AUTHOR"
+.\"
+Endless Mobile, Inc.
+.\"
+.SH COPYRIGHT
+.IX Header "COPYRIGHT"
+.\"
+Copyright © 2017 Endless Mobile, Inc.
+
