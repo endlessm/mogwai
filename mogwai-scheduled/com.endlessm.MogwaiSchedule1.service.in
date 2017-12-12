@@ -1,0 +1,5 @@
+[D-BUS Service]
+Name=com.endlessm.MogwaiSchedule1
+Exec=@libexecdir@/mogwai-scheduled1
+User=@DAEMON_USER@
+SystemdService=mogwai-scheduled.service
