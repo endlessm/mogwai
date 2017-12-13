@@ -1,0 +1,48 @@
+Source: mogwai
+Section: misc
+Priority: optional
+Maintainer: Philip Withnall <withnall@endlessm.com>
+Standards-Version: 4.1.2
+Build-Depends:
+ debhelper (>= 10),
+ dh-systemd,
+ libglib2.0-dev (>= 2.44.0),
+ libsystemd-dev,
+ meson,
+
+Package: mogwai-scheduled
+Section: misc
+Architecture: any
+Multi-arch: same
+Depends:
+ systemd (>= 200),
+ ${misc:Depends},
+ ${shlibs:Depends},
+Description: Download Scheduler Daemon
+ This package contains a download scheduler for saving bandwidth on metered
+ connections.
+
+Package: libmogwai-helper-1-tests
+Section: misc
+Architecture: any
+Depends:
+ ${misc:Depends},
+ ${shlibs:Depends},
+Description: Download Scheduler Daemon - helper library tests
+ This package contains a download scheduler for saving bandwidth on metered
+ connections.
+ .
+ This package contains unit tests for the APIs used by the scheduler and
+ other tools.
+
+Package: libmogwai-schedule-1-tests
+Section: misc
+Architecture: any
+Depends:
+ ${misc:Depends},
+ ${shlibs:Depends},
+Description: Download Scheduler Daemon - scheduler library tests
+ This package contains a download scheduler for saving bandwidth on metered
+ connections.
+ .
+ This package contains unit tests for the APIs used by the scheduler.

@@ -1,0 +1,6 @@
+lib/systemd/system/mogwai-scheduled.service
+usr/lib/*/mogwai-scheduled1
+usr/lib/sysusers.d/mogwai-scheduled.conf
+usr/share/dbus-1/system.d/com.endlessm.MogwaiSchedule1.conf
+usr/share/dbus-1/system-services/com.endlessm.MogwaiSchedule1.service
+usr/share/man/man8/mogwai-scheduled.8*
