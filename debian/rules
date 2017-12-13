@@ -1,0 +1,20 @@
+#!/usr/bin/make -f
+# -*- makefile -*-
+
+export DEB_BUILD_MAINT_OPTIONS = hardening=+all
+
+override_dh_auto_configure:
+	dh_auto_configure \
+		-- \
+		-Dinstalled_tests=true \
+		$(NULL)
+
+# Don't start the services on install
+override_dh_systemd_start:
+	dh_systemd_start -pmogwai-scheduled --no-start mogwai-scheduled.service
+
+override_dh_install:
+	dh_install --fail-missing
+
+%:
+	dh $@ --with systemd --parallel

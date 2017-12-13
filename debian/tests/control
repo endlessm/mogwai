@@ -1,0 +1,5 @@
+Tests: gnome-desktop-testing
+Depends:
+ gnome-desktop-testing,
+ libmogwai-helper-1-tests,
+ libmogwai-schedule-1-tests,
