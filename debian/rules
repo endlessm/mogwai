@@ -14,7 +14,6 @@ override_dh_systemd_start:
 	dh_systemd_start -pmogwai-scheduled --no-start mogwai-scheduled.service
 
 override_dh_install:
-	rm -f debian/tmp/usr/lib/*/*.la
 	dh_install --fail-missing
 
 %:
