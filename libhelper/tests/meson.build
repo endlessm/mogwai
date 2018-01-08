@@ -31,20 +31,21 @@ foreach program: test_programs
     output: program[0] + '.test',
     install: enable_installed_tests,
     install_dir: installed_tests_metadir,
-    configuration: test_conf
+    configuration: test_conf,
   )
 
   exe = executable(
     program[0],
     [program[0] + '.c'] + program[1],
     dependencies: program[2],
+    include_directories: root_inc,
     install: enable_installed_tests,
-    install_dir: installed_tests_execdir
+    install_dir: installed_tests_execdir,
   )
 
   test(
     program[0],
     exe,
-    env: envs
+    env: envs,
   )
 endforeach
