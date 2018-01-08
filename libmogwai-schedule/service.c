@@ -1,6 +1,6 @@
 /* -*- mode: C; c-file-style: "gnu"; indent-tabs-mode: nil; -*-
  *
- * Copyright © 2017 Endless Mobile, Inc.
+ * Copyright © 2017, 2018 Endless Mobile, Inc.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -27,6 +27,8 @@
 #include <glib-unix.h>
 #include <glib/gi18n-lib.h>
 #include <gio/gio.h>
+#include <libmogwai-schedule/schedule-service.h>
+#include <libmogwai-schedule/scheduler.h>
 #include <libmogwai-schedule/service.h>
 #include <locale.h>
 
@@ -54,7 +56,10 @@ struct _MwsService
 {
   HlpService parent;
 
-  GCancellable *cancellable;  /* owned */
+  MwsScheduler *scheduler;  /* (owned) */
+  MwsScheduleService *schedule_service;  /* (owned) */
+
+  GCancellable *cancellable;  /* (owned) */
 };
 
 G_DEFINE_TYPE (MwsService, mws_service, HLP_TYPE_SERVICE)
@@ -88,6 +93,9 @@ mws_service_dispose (GObject *object)
   g_cancellable_cancel (self->cancellable);
   g_clear_object (&self->cancellable);
 
+  g_clear_object (&self->schedule_service);
+  g_clear_object (&self->scheduler);
+
   /* Chain up to the parent class */
   G_OBJECT_CLASS (mws_service_parent_class)->dispose (object);
 }
@@ -98,17 +106,23 @@ mws_service_startup_async (HlpService          *service,
                            GAsyncReadyCallback  callback,
                            gpointer             user_data)
 {
-  g_autoptr (GTask) task = NULL;
-  GDBusConnection *connection;
+  MwsService *self = MWS_SERVICE (service);
+  g_autoptr(GError) local_error = NULL;
 
-  task = g_task_new (service, cancellable, callback, user_data);
+  g_autoptr (GTask) task = g_task_new (service, cancellable, callback, user_data);
   g_task_set_source_tag (task, mws_service_startup_async);
 
-  connection = hlp_service_get_dbus_connection (service);
+  GDBusConnection *connection = hlp_service_get_dbus_connection (service);
 
-  /* TODO: Create our D-Bus API here. */
+  self->scheduler = mws_scheduler_new ();
+  self->schedule_service = mws_schedule_service_new (connection,
+                                                     "/com/endlessm/DownloadManager1",
+                                                     self->scheduler);
 
-  g_task_return_boolean (task, TRUE);
+  if (!mws_schedule_service_register (self->schedule_service, &local_error))
+    g_task_return_error (task, g_steal_pointer (&local_error));
+  else
+    g_task_return_boolean (task, TRUE);
 }
 
 static void
@@ -125,6 +139,7 @@ mws_service_shutdown (HlpService *service)
   MwsService *self = MWS_SERVICE (service);
 
   g_cancellable_cancel (self->cancellable);
+  mws_schedule_service_unregister (self->schedule_service);
 }
 
 /**
