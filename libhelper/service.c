@@ -35,11 +35,7 @@
 
 /* These errors do not need to be registered with
  * g_dbus_error_register_error_domain() as they never go over the bus. */
-GQuark
-hlp_service_error_quark (void)
-{
-  return g_quark_from_static_string ("hlp-service-error-quark");
-}
+G_DEFINE_QUARK (HlpServiceError, hlp_service_error)
 
 /* A way of automatically removing bus names when going out of scope. */
 typedef guint BusNameId;
