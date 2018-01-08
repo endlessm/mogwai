@@ -95,4 +95,5 @@ test_template = files('template.test.in')
 
 subdir('libhelper')
 subdir('libmogwai-schedule')
+subdir('mogwai-schedule-client')
 subdir('mogwai-scheduled')
