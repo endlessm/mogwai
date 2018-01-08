@@ -14,6 +14,7 @@ mogwai_scheduled_deps = [
 executable('mogwai-scheduled' + mogwai_scheduled_api_version,
   mogwai_scheduled_sources,
   dependencies: mogwai_scheduled_deps,
+  include_directories: root_inc,
   install: true,
   install_dir: get_option('libexecdir'),
 )

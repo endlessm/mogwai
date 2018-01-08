@@ -16,6 +16,7 @@ libhelper_deps = [
 libhelper = static_library('helper-' + libhelper_api_version,
   libhelper_sources + libhelper_headers,
   dependencies: libhelper_deps,
+  include_directories: root_inc,
   install: false,
 )
 libhelper_dep = declare_dependency(link_with: libhelper)

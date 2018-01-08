@@ -21,10 +21,7 @@ configure_file(
   output: 'config.h',
   configuration: config_h,
 )
-add_project_arguments([
-  '-I' + meson.source_root(),
-  '-I' + meson.build_root(),
-], language: 'c')
+root_inc = include_directories('.')
 
 # Enable warning flags
 test_args = [
