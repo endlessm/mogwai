@@ -11,8 +11,10 @@ All the library APIs are currently unstable and are likely to change wildly.
 Dependencies
 ============
 
- • glib-2.0 ≥ 2.44.0
- • gio-2.0 ≥ 2.44.0
+ • gio-2.0 ≥ 2.54
+ • glib-2.0 ≥ 2.54
+ • gobject-2.0 ≥ 2.54
+ • systemd
 
 Licensing
 =========
@@ -23,7 +25,8 @@ also licensed under the LGPL. See COPYING for more details.
 Bugs
 ====
 
-Bug reports and patches should be reported by e-mail to one of the authors.
+Bug reports and patches should be reported by e-mail to one of the authors or
+filed in GitHub.
 
 Contact
 =======
