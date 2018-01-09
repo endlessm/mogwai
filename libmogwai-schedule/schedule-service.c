@@ -401,7 +401,7 @@ static gchar *
 schedule_entry_to_object_path (MwsScheduleService *self,
                                MwsScheduleEntry   *entry)
 {
-  return g_strconcat (self->object_path, "/", mws_schedule_entry_get_id (entry));
+  return g_strconcat (self->object_path, "/", mws_schedule_entry_get_id (entry), NULL);
 }
 
 static void
