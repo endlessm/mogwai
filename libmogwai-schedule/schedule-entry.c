@@ -156,7 +156,9 @@ mws_schedule_entry_init (MwsScheduleEntry *self)
 {
   /* Generate a unique ID for the entry. With a 64-bit counter, we can generate
    * a new #MwsScheduleEntry at 1GHz for over 500 years before we run out of
-   * numbers. Just in case, abort if we hit the limit. */
+   * numbers. Just in case, abort if we hit the limit.
+   * FIXME: Ideally we’d use 64-bit atomics here:
+   * https://bugzilla.gnome.org/show_bug.cgi?id=754182 */
   G_LOCK (entry_id_counter);
   guint64 our_id = entry_id_counter;
   entry_id_counter++;
@@ -453,6 +455,7 @@ mws_schedule_entry_set_resumable (MwsScheduleEntry *self,
 {
   g_return_if_fail (MWS_IS_SCHEDULE_ENTRY (self));
 
+  resumable = !!resumable;
   if (self->resumable == resumable)
     return;
 
