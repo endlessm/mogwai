@@ -300,15 +300,14 @@ mws_schedule_entry_new_from_variant (const gchar  *owner,
   g_return_val_if_fail (error == NULL || *error == NULL, NULL);
 
   g_autoptr(GPtrArray) names = NULL;
+  names = g_ptr_array_new_full (g_variant_n_children (parameters), NULL);
   g_autoptr(GArray) values = NULL;
+  values = g_array_sized_new (FALSE, TRUE, sizeof (GValue),
+                              g_variant_n_children (parameters));
+  g_array_set_clear_func (values, (GDestroyNotify) g_value_unset);
 
   if (parameters != NULL)
     {
-      names = g_ptr_array_new_full (g_variant_n_children (parameters), NULL);
-      values = g_array_sized_new (FALSE, TRUE, sizeof (GValue),
-                                  g_variant_n_children (parameters));
-      g_array_set_clear_func (values, (GDestroyNotify) g_value_unset);
-
       GVariantIter iter;
       const gchar *key;
       g_autoptr(GVariant) variant = NULL;
