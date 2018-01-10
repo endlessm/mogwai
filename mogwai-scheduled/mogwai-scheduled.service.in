@@ -30,7 +30,8 @@ ProtectSystem=strict
 RestrictAddressFamilies=AF_UNIX
 RestrictRealtime=yes
 SystemCallErrorNumber=EPERM
-SystemCallFilter=@basic-io @io-event @ipc
+SystemCallFilter=~@clock @cpu-emulation @debug @keyring @module @mount @obsolete @privileged @raw-io @resources
+SystemCallArchitectures=native
 
 [Install]
 WantedBy=multi-user.target
