@@ -7,6 +7,7 @@ Build-Depends:
  debhelper (>= 10),
  dh-systemd,
  libglib2.0-dev (>= 2.54.0),
+ libsoup2.4-dev (>= 2.42.0),
  libsystemd-dev,
  meson,
 
@@ -21,6 +22,19 @@ Depends:
 Description: Download Scheduler Daemon
  This package contains a download scheduler for saving bandwidth on metered
  connections.
+
+Package: mogwai-schedule-tools
+Section: misc
+Architecture: any
+Multi-arch: same
+Depends:
+ ${misc:Depends},
+ ${shlibs:Depends},
+Description: Download Scheduler Tools
+ This package contains a download scheduler for saving bandwidth on metered
+ connections.
+ .
+ This package contains tools for controlling the download scheduler.
 
 Package: libmogwai-helper-1-tests
 Section: misc
