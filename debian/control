@@ -6,7 +6,7 @@ Standards-Version: 4.1.2
 Build-Depends:
  debhelper (>= 10),
  dh-systemd,
- libglib2.0-dev (>= 2.44.0),
+ libglib2.0-dev (>= 2.54.0),
  libsystemd-dev,
  meson,
 
