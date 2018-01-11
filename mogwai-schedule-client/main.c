@@ -53,13 +53,20 @@ typedef enum
 typedef struct
 {
   GCancellable *cancellable;  /* (owned) */
-  gint signum;
+  gint *signum_out;
+  guint handler_id;
 } SignalData;
 
 static void
 signal_data_clear (SignalData *data)
 {
   g_clear_object (&data->cancellable);
+  /* FIXME: Use g_clear_handle() in future */
+  if (data->handler_id != 0)
+    {
+      g_source_remove (data->handler_id);
+      data->handler_id = 0;
+    }
 }
 
 G_DEFINE_AUTO_CLEANUP_CLEAR_FUNC (SignalData, signal_data_clear)
@@ -68,14 +75,12 @@ static gboolean
 handle_signal (SignalData *signal_data,
                gint        signum)
 {
-  if (signal_data->cancellable != NULL)
-    {
-      signal_data->signum = signum;
-      g_cancellable_cancel (signal_data->cancellable);
-    }
+  *signal_data->signum_out = signum;
+  g_cancellable_cancel (signal_data->cancellable);
 
   /* Remove the signal handler so when we raise again later, we don’t enter a
    * loop. */
+  signal_data->handler_id = 0;
   return G_SOURCE_REMOVE;
 }
 
@@ -94,10 +99,6 @@ signal_sigterm_cb (gpointer user_data)
 
   return handle_signal (signal_data, SIGTERM);
 }
-
-/* A way of automatically removing sources when going out of scope. */
-typedef guint SourceId;
-G_DEFINE_AUTO_CLEANUP_FREE_FUNC (SourceId, g_source_remove, 0)
 
 /* Download handling. */
 typedef struct
@@ -471,13 +472,16 @@ main (int   argc,
   textdomain (GETTEXT_PACKAGE);
 
   /* Set up signal handlers. */
-  g_auto(SignalData) signal_data = { NULL, 0 };
   g_autoptr(GCancellable) cancellable = g_cancellable_new ();
-  signal_data.cancellable = g_object_ref (cancellable);
+  gint signum = 0;
 
-  g_auto(SourceId) sigint_id = 0, sigterm_id = 0;
-  sigint_id = g_unix_signal_add (SIGINT, signal_sigint_cb, &signal_data);
-  sigterm_id = g_unix_signal_add (SIGTERM, signal_sigterm_cb, &signal_data);
+  g_auto(SignalData) sigint_data = { NULL, &signum, 0 };
+  sigint_data.cancellable = g_object_ref (cancellable);
+  sigint_data.handler_id = g_unix_signal_add (SIGINT, signal_sigint_cb, &sigint_data);
+
+  g_auto(SignalData) sigterm_data = { NULL, &signum, 0 };
+  sigterm_data.cancellable = g_object_ref (cancellable);
+  sigterm_data.handler_id = g_unix_signal_add (SIGTERM, signal_sigterm_cb, &sigterm_data);
 
   /* Handle command line parameters. */
   g_autofree gchar *bus_address = NULL;
@@ -569,7 +573,7 @@ main (int   argc,
                                                        NULL  /* observer */,
                                                        cancellable, &error);
 
-  if (connection == NULL)
+  if (error != NULL)
     {
       g_autofree gchar *message = NULL;
       message = g_strdup_printf (_("D-Bus bus ‘%s’ unavailable: %s"),
@@ -597,15 +601,8 @@ main (int   argc,
       if (error != NULL)
         {
           if (g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED) &&
-              signal_data.signum != 0)
-            {
-              if (signal_data.signum == SIGINT)
-                sigint_id = 0;  /* removed already */
-              else if (signal_data.signum == SIGTERM)
-                sigterm_id = 0;  /* removed already */
-              else
-                g_assert_not_reached ();
-            raise (signal_data.signum);
+              signum != 0)
+            raise (signum);
 
           g_printerr ("%s: %s\n", argv[0], error->message);
 
