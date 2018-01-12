@@ -85,4 +85,9 @@ static const GDBusInterfaceInfo scheduler_interface =
   NULL,  /* no annotations */
 };
 
+static const gchar *scheduler_errors[] =
+{
+  "com.endlessm.DownloadManager1.Scheduler.Error.Full",
+};
+
 G_END_DECLS
