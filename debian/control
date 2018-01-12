@@ -60,3 +60,41 @@ Description: Download Scheduler Daemon - scheduler library tests
  connections.
  .
  This package contains unit tests for the APIs used by the scheduler.
+
+Package: libmogwai-schedule-client-0
+Section: misc
+Architecture: any
+Depends:
+ ${misc:Depends},
+ ${shlibs:Depends},
+Description: Download Scheduler Daemon - scheduler client library
+ This package contains a download scheduler for saving bandwidth on metered
+ connections.
+ .
+ This package contains the client APIs used to access the scheduler.
+
+Package: libmogwai-schedule-client-0-dev
+Section: libdevel
+Architecture: any
+Multi-arch: same
+Depends:
+ libglib2.0-dev,
+ ${misc:Depends},
+Description: Download Scheduler Daemon - scheduler client library development
+ This package contains a download scheduler for saving bandwidth on metered
+ connections.
+ .
+ This package contains development files for clients.
+
+Package: libmogwai-schedule-client-0-tests
+Section: misc
+Architecture: any
+Depends:
+ ${misc:Depends},
+ ${shlibs:Depends},
+Description: Download Scheduler Daemon - scheduler client library tests
+ This package contains a download scheduler for saving bandwidth on metered
+ connections.
+ .
+ This package contains unit tests for the client APIs used to access the
+ scheduler.

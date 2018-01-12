@@ -3,3 +3,4 @@ Depends:
  gnome-desktop-testing,
  libmogwai-helper-1-tests,
  libmogwai-schedule-1-tests,
+ libmogwai-schedule-client-0-tests,
