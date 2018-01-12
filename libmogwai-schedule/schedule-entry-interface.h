@@ -29,6 +29,9 @@ G_BEGIN_DECLS
 
 /*
  * Declaration of the com.endlessm.DownloadManager1.ScheduleEntry D-Bus interface.
+ *
+ * FIXME: Ideally, there would be a gdbus-codegen mode to generate just this
+ * interface info, because writing it out in C is horrific.
  */
 
 static const GDBusMethodInfo schedule_entry_interface_remove =
