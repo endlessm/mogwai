@@ -174,7 +174,7 @@ mws_schedule_entry_constructed (GObject *object)
   MwsScheduleEntry *self = MWS_SCHEDULE_ENTRY (object);
 
   /* Chain up to the parent class */
-  G_OBJECT_CLASS (mws_schedule_entry_parent_class)->dispose (object);
+  G_OBJECT_CLASS (mws_schedule_entry_parent_class)->constructed (object);
 
   /* Check all our construct-only properties are set. */
   g_assert (self->id != NULL && *self->id != '\0');
