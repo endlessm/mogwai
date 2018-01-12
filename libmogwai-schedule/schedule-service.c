@@ -138,11 +138,12 @@ static void peer_vanished_cb   (GDBusConnection *connection,
                                 const gchar     *name,
                                 gpointer         user_data);
 
-static const GDBusErrorEntry scheduler_errors[] =
+static const GDBusErrorEntry scheduler_error_map[] =
   {
     { MWS_SCHEDULER_ERROR_FULL, "com.endlessm.DownloadManager1.Scheduler.Error.Full" },
   };
-G_STATIC_ASSERT (G_N_ELEMENTS (scheduler_errors) == MWS_SCHEDULER_N_ERRORS);
+G_STATIC_ASSERT (G_N_ELEMENTS (scheduler_error_map) == MWS_SCHEDULER_N_ERRORS);
+G_STATIC_ASSERT (G_N_ELEMENTS (scheduler_error_map) == G_N_ELEMENTS (scheduler_errors));
 
 /**
  * MwsScheduleService:
@@ -242,10 +243,10 @@ mws_schedule_service_class_init (MwsScheduleServiceClass *klass)
   /* Error domain registration for D-Bus. We do this here, rather than in a
    * #GOnce section in mws_scheduler_error_quark(), to avoid spreading the D-Bus
    * code outside this file. */
-  for (gsize i = 0; i < G_N_ELEMENTS (scheduler_errors); i++)
+  for (gsize i = 0; i < G_N_ELEMENTS (scheduler_error_map); i++)
     g_dbus_error_register_error (MWS_SCHEDULER_ERROR,
-                                 scheduler_errors[i].error_code,
-                                 scheduler_errors[i].dbus_error_name);
+                                 scheduler_error_map[i].error_code,
+                                 scheduler_error_map[i].dbus_error_name);
 }
 
 static void
