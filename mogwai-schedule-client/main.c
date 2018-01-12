@@ -27,6 +27,8 @@
 #include <glib/gi18n.h>
 #include <glib-object.h>
 #include <glib-unix.h>
+#include <libmogwai-schedule-client/schedule-entry.h>
+#include <libmogwai-schedule-client/scheduler.h>
 #include <libsoup/soup.h>
 #include <locale.h>
 #include <signal.h>
@@ -103,14 +105,14 @@ signal_sigterm_cb (gpointer user_data)
 /* Download handling. */
 typedef struct
 {
-  GDBusConnection *connection;  /* (owned) */
+  MwscScheduler *scheduler;  /* (owned) */
+  GVariant *parameters;  /* (owned) */
   gchar *uri;  /* (owned) */
   GFile *destination_file;  /* (owned) */
-  gboolean is_interactive;
   SoupSession *session;  /* (owned) */
   SoupRequest *request;  /* (owned) (nullable) */
-  GDBusProxy *entry_proxy;  /* (owned) (nullable) */
-  gulong properties_changed_id;
+  MwscScheduleEntry *entry;  /* (owned) (nullable) */
+  gulong entry_notify_download_now_id;
   GInputStream *request_stream;  /* (owned) (nullable) */
   gsize bytes_spliced;
 } DownloadData;
@@ -119,29 +121,28 @@ static void
 download_data_free (DownloadData *data)
 {
   g_clear_object (&data->request_stream);
-  if (data->entry_proxy != NULL && data->properties_changed_id != 0)
-    g_signal_handler_disconnect (data->entry_proxy, data->properties_changed_id);
-  g_clear_object (&data->entry_proxy);
+  g_assert (data->entry_notify_download_now_id == 0);
+  g_clear_object (&data->entry);
   g_clear_object (&data->request);
   g_clear_object (&data->session);
   g_clear_object (&data->destination_file);
   g_clear_pointer (&data->uri, g_free);
-  g_clear_object (&data->connection);
+  g_clear_pointer (&data->parameters, g_variant_unref);
+  g_clear_object (&data->scheduler);
   g_free (data);
 }
 
 G_DEFINE_AUTOPTR_CLEANUP_FUNC (DownloadData, download_data_free);
 
+static void scheduler_cb (GObject      *obj,
+                          GAsyncResult *result,
+                          gpointer      user_data);
 static void schedule_cb (GObject      *obj,
                          GAsyncResult *result,
                          gpointer      user_data);
-static void proxy_cb (GObject      *obj,
-                      GAsyncResult *result,
-                      gpointer      user_data);
-static void entry_proxy_properties_changed_cb (GDBusProxy *proxy,
-                                               GVariant   *changed_properties,
-                                               GStrv       invalidated_properties,
-                                               gpointer    user_data);
+static void entry_notify_download_now_cb (GObject    *obj,
+                                          GParamSpec *pspec,
+                                          gpointer    user_data);
 static void start_download (GTask *task);
 static void request_send_cb (GObject      *obj,
                              GAsyncResult *result,
@@ -162,7 +163,6 @@ download_uri_async (const gchar         *uri,
                     guint32              priority,
                     gboolean             resumable,
                     GDBusConnection     *connection,
-                    gboolean             is_interactive,
                     GCancellable        *cancellable,
                     GAsyncReadyCallback  callback,
                     gpointer             user_data)
@@ -171,35 +171,28 @@ download_uri_async (const gchar         *uri,
   g_task_set_source_tag (task, download_uri_async);
 
   g_autoptr(DownloadData) data = g_new0 (DownloadData, 1);
-  data->connection = g_object_ref (connection);
   data->uri = g_strdup (uri);
   data->destination_file = g_object_ref (destination_file);
-  data->is_interactive = is_interactive;
   data->session = soup_session_new ();
-
-  g_task_set_task_data (task, g_steal_pointer (&data), (GDestroyNotify) download_data_free);
 
   /* Sort out the arguments for the schedule entry. */
   g_auto(GVariantDict) dict;
   g_variant_dict_init (&dict, NULL);
   g_variant_dict_insert (&dict, "Priority", "u", priority);
   g_variant_dict_insert (&dict, "Resumable", "b", resumable);
+  data->parameters = g_variant_ref_sink (g_variant_dict_end (&dict));
 
-  /* Create a schedule entry for the download.
+  g_task_set_task_data (task, g_steal_pointer (&data), (GDestroyNotify) download_data_free);
+
+  /* Create a scheduler and entry for the download.
    * FIXME: For the moment, we just make the D-Bus calls manually. In future,
    * this will probably be split out into libmogwai-schedule-client. */
-  g_dbus_connection_call (connection, "com.endlessm.MogwaiSchedule1",
-                          "/com/endlessm/DownloadManager1",
-                          "com.endlessm.DownloadManager1.Scheduler",
-                          "Schedule",
-                          g_variant_new ("(@a{sv})", g_variant_dict_end (&dict)),
-                          G_VARIANT_TYPE ("(o)"),
-                          G_DBUS_CALL_FLAGS_NONE |
-                          (is_interactive ? G_DBUS_CALL_FLAGS_ALLOW_INTERACTIVE_AUTHORIZATION : 0),
-                          -1,  /* default timeout */
-                          cancellable,
-                          schedule_cb,
-                          g_steal_pointer (&task));
+  mwsc_scheduler_new_async (connection,
+                            "com.endlessm.MogwaiSchedule1",
+                            "/com/endlessm/DownloadManager1",
+                            cancellable,
+                            scheduler_cb,
+                            g_steal_pointer (&task));
 }
 
 static gboolean
@@ -213,48 +206,43 @@ download_uri_finish (GAsyncResult  *result,
 }
 
 static void
+scheduler_cb (GObject      *obj,
+              GAsyncResult *result,
+              gpointer      user_data)
+{
+  g_autoptr(GTask) task = G_TASK (user_data);
+  DownloadData *data = g_task_get_task_data (task);
+  GCancellable *cancellable = g_task_get_cancellable (task);
+  g_autoptr(GError) error = NULL;
+
+  /* Grab the scheduler and create a schedule entry. */
+  data->scheduler = mwsc_scheduler_new_finish (result, &error);
+
+  if (error != NULL)
+    {
+      g_task_return_error (task, g_steal_pointer (&error));
+      return;
+    }
+
+  mwsc_scheduler_schedule_async (data->scheduler,
+                                 data->parameters,
+                                 cancellable,
+                                 schedule_cb,
+                                 g_steal_pointer (&task));
+}
+
+static void
 schedule_cb (GObject      *obj,
              GAsyncResult *result,
              gpointer      user_data)
 {
-  GDBusConnection *connection = G_DBUS_CONNECTION (obj);
-  g_autoptr(GTask) task = G_TASK (user_data);
-  GCancellable *cancellable = g_task_get_cancellable (task);
-  g_autoptr(GError) error = NULL;
-
-  /* Grab the schedule entry. */
-  g_autoptr(GVariant) return_value = NULL;
-  return_value = g_dbus_connection_call_finish (connection, result, &error);
-
-  if (error != NULL)
-    {
-      g_task_return_error (task, g_steal_pointer (&error));
-      return;
-    }
-
-  const gchar *schedule_entry_path;
-  g_variant_get (return_value, "(&o)", &schedule_entry_path);
-
-  g_dbus_proxy_new (connection, G_DBUS_PROXY_FLAGS_NONE,
-                    NULL  /* interface info */,
-                    "com.endlessm.MogwaiSchedule1",
-                    schedule_entry_path,
-                    "com.endlessm.DownloadManager1.ScheduleEntry",
-                    cancellable,
-                    proxy_cb,
-                    g_steal_pointer (&task));
-}
-
-static void
-proxy_cb (GObject      *obj,
-          GAsyncResult *result,
-          gpointer      user_data)
-{
+  MwscScheduler *scheduler = MWSC_SCHEDULER (obj);
   g_autoptr(GTask) task = G_TASK (user_data);
   DownloadData *data = g_task_get_task_data (task);
   g_autoptr(GError) error = NULL;
 
-  data->entry_proxy = g_dbus_proxy_new_finish (result, &error);
+  /* Grab the schedule entry. */
+  data->entry = mwsc_scheduler_schedule_finish (scheduler, result, &error);
 
   if (error != NULL)
     {
@@ -262,16 +250,14 @@ proxy_cb (GObject      *obj,
       return;
     }
 
-  g_autoptr(GVariant) download_now_variant = NULL;
-  download_now_variant = g_dbus_proxy_get_cached_property (data->entry_proxy,
-                                                           "DownloadNow");
+  /* FIXME: We should probably check for cancellation while waiting here. */
+  gboolean download_now = mwsc_schedule_entry_get_download_now (data->entry);
 
-  if (download_now_variant == NULL ||
-      !g_variant_get_boolean (download_now_variant))
+  if (!download_now)
     {
-      data->properties_changed_id =
-          g_signal_connect (data->entry_proxy, "g-properties-changed",
-                            (GCallback) entry_proxy_properties_changed_cb,
+      data->entry_notify_download_now_id =
+          g_signal_connect (data->entry, "notify::download-now",
+                            (GCallback) entry_notify_download_now_cb,
                             g_steal_pointer (&task));
     }
   else
@@ -281,33 +267,19 @@ proxy_cb (GObject      *obj,
 }
 
 static void
-entry_proxy_properties_changed_cb (GDBusProxy *proxy,
-                                   GVariant   *changed_properties,
-                                   GStrv       invalidated_properties,
-                                   gpointer    user_data)
+entry_notify_download_now_cb (GObject    *obj,
+                              GParamSpec *pspec,
+                              gpointer    user_data)
 {
-  /* The reference counting here is a little unusual: this signal handler
-   * closure owns the last reference to the #GTask. Only once the download is
-   * started (below), the signal handler is removed and our reference is dropped
-   * (but not before start_download() has taken its own reference). */
+  MwscScheduleEntry *entry = MWSC_SCHEDULE_ENTRY (obj);
   GTask *task = G_TASK (user_data);
   DownloadData *data = g_task_get_task_data (task);
 
-  /* Don’t bother checking whether DownloadNow was actually changed: it’s
-   * cheap enough to just check its latest value.
-   *
-   * FIXME: In future, we should support DownloadNow flipping value several
-   * times over the lifetime of the download, as the scheduler makes this entry
-   * active and inactive in order to best use bandwidth. */
-  g_autoptr(GVariant) download_now_variant = NULL;
-  download_now_variant = g_dbus_proxy_get_cached_property (proxy, "DownloadNow");
-
-  if (download_now_variant != NULL &&
-      g_variant_get_boolean (download_now_variant))
+  if (mwsc_schedule_entry_get_download_now (entry))
     {
       start_download (task);
-      g_signal_handler_disconnect (data->entry_proxy, data->properties_changed_id);
-      data->properties_changed_id = 0;
+      g_signal_handler_disconnect (data->entry, data->entry_notify_download_now_id);
+      data->entry_notify_download_now_id = 0;
       g_object_unref (task);
     }
 }
@@ -416,15 +388,10 @@ splice_cb (GObject      *obj,
    * Really, we should do this on all the error paths above, but we rely on
    * the scheduler noticing when this process exits. Let’s be explicit in this
    * case to test both code paths in the scheduler. */
-  g_dbus_proxy_call (data->entry_proxy,
-                     "Remove",
-                     NULL,  /* no parameters */
-                     G_DBUS_CALL_FLAGS_NONE |
-                     (data->is_interactive ? G_DBUS_CALL_FLAGS_ALLOW_INTERACTIVE_AUTHORIZATION : 0),
-                     -1,  /* default timeout */
-                     cancellable,
-                     remove_cb,
-                     g_steal_pointer (&task));
+  mwsc_schedule_entry_remove_async (data->entry,
+                                    cancellable,
+                                    remove_cb,
+                                    g_steal_pointer (&task));
 }
 
 static void
@@ -432,15 +399,12 @@ remove_cb (GObject      *obj,
            GAsyncResult *result,
            gpointer      user_data)
 {
-  GDBusProxy *entry_proxy = G_DBUS_PROXY (obj);
+  MwscScheduleEntry *entry = MWSC_SCHEDULE_ENTRY (obj);
   g_autoptr(GTask) task = G_TASK (user_data);
   DownloadData *data = g_task_get_task_data (task);
   g_autoptr(GError) error = NULL;
 
-  g_autoptr(GVariant) reply_variant = NULL;
-  reply_variant = g_dbus_proxy_call_finish (entry_proxy, result, &error);
-
-  if (error != NULL)
+  if (!mwsc_schedule_entry_remove_finish (entry, result, &error))
     {
       g_task_return_error (task, g_steal_pointer (&error));
       return;
@@ -545,9 +509,6 @@ main (int   argc,
   const gchar *output_filename = args[1];
   g_autoptr(GFile) destination_file = g_file_new_for_commandline_arg (output_filename);
 
-  /* Is this an interactive shell? */
-  gboolean is_interactive = isatty (fileno (stdin));
-
   /* Connect to D-Bus. If no address was specified on the command line, use the
    * system bus. */
   if (bus_address == NULL)
@@ -585,8 +546,7 @@ main (int   argc,
 
   /* Create a #GTask for the scheduling and download, and start downloading. */
   g_autoptr(GAsyncResult) download_result = NULL;
-  download_uri_async (uri, destination_file, priority, resumable,
-                      connection, is_interactive,
+  download_uri_async (uri, destination_file, priority, resumable, connection,
                       cancellable, async_result_cb, &download_result);
 
   /* Run the main loop until we are signalled or the download finishes. */
