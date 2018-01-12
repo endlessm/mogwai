@@ -30,11 +30,8 @@
 #include <libmogwai-schedule/scheduler.h>
 
 
-GQuark
-mws_scheduler_error_quark (void)
-{
-  return g_quark_from_static_string ("mws-scheduler-error");
-}
+/* These errors do go over the bus, and are registered in schedule-service.c. */
+G_DEFINE_QUARK (MwsSchedulerError, mws_scheduler_error)
 
 static void mws_scheduler_dispose      (GObject      *object);
 
