@@ -1,4 +1,3 @@
-mogwai_scheduled_api_version = '0'
 mogwai_schedule_client_sources = [
   'main.c',
 ]
