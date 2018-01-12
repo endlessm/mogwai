@@ -8,6 +8,8 @@ project('mogwai','c',
   ],
 )
 
+pkgconfig = import('pkgconfig')
+
 prefix = get_option('prefix')
 datadir = join_paths(prefix, get_option('datadir'))
 libdir = join_paths(prefix, get_option('libdir'))
@@ -95,5 +97,6 @@ test_template = files('template.test.in')
 
 subdir('libhelper')
 subdir('libmogwai-schedule')
+subdir('libmogwai-schedule-client')
 subdir('mogwai-schedule-client')
 subdir('mogwai-scheduled')
