@@ -8,7 +8,7 @@ mogwai_schedule_client_deps = [
   dependency('glib-2.0', version: '>= 2.44'),
   dependency('gobject-2.0', version: '>= 2.44'),
   dependency('libsoup-2.4', version: '>= 2.42'),
-  libmogwai_schedule_dep,
+  libmogwai_schedule_client_dep,
 ]
 
 executable('mogwai-schedule-client-' + mogwai_scheduled_api_version,
