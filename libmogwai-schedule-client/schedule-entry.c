@@ -774,7 +774,7 @@ mwsc_schedule_entry_new_from_proxy (GDBusProxy  *proxy,
 }
 
 /**
- * mwsc_schedule_entry_new_async:
+ * mwsc_schedule_entry_new_full_async:
  * @connection: D-Bus connection to use
  * @name: (nullable): well-known or unique name of the peer to proxy from, or
  *    %NULL if @connection is not a message bus connection
@@ -786,17 +786,17 @@ mwsc_schedule_entry_new_from_proxy (GDBusProxy  *proxy,
  * Create a new #MwscScheduleEntry for the given @object_path at @name on
  * @connection, and set up the proxy object. This is an asynchronous process
  * which might fail; object instantiation must be finished (or the error
- * returned) by calling mwsc_schedule_entry_new_finish().
+ * returned) by calling mwsc_schedule_entry_new_full_finish().
  *
  * Since: 0.1.0
  */
 void
-mwsc_schedule_entry_new_async (GDBusConnection     *connection,
-                               const gchar         *name,
-                               const gchar         *object_path,
-                               GCancellable        *cancellable,
-                               GAsyncReadyCallback  callback,
-                               gpointer             user_data)
+mwsc_schedule_entry_new_full_async (GDBusConnection     *connection,
+                                    const gchar         *name,
+                                    const gchar         *object_path,
+                                    GCancellable        *cancellable,
+                                    GAsyncReadyCallback  callback,
+                                    gpointer             user_data)
 {
   g_return_if_fail (G_IS_DBUS_CONNECTION (connection));
   g_return_if_fail (name == NULL || g_dbus_is_name (name));
@@ -815,19 +815,19 @@ mwsc_schedule_entry_new_async (GDBusConnection     *connection,
 }
 
 /**
- * mwsc_schedule_entry_new_finish:
+ * mwsc_schedule_entry_new_full_finish:
  * @result: asynchronous operation result
  * @error: return location for a #GError
  *
  * Finish initialising a #MwscScheduleEntry. See
- * mwsc_schedule_entry_new_async().
+ * mwsc_schedule_entry_new_full_async().
  *
  * Returns: (transfer full): initialised #MwscScheduleEntry, or %NULL on error
  * Since: 0.1.0
  */
 MwscScheduleEntry *
-mwsc_schedule_entry_new_finish (GAsyncResult  *result,
-                                GError       **error)
+mwsc_schedule_entry_new_full_finish (GAsyncResult  *result,
+                                     GError       **error)
 {
   g_return_val_if_fail (G_IS_ASYNC_RESULT (result), NULL);
   g_return_val_if_fail (error == NULL || *error == NULL, NULL);

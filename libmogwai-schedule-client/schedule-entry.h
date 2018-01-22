@@ -52,13 +52,13 @@ GQuark mwsc_schedule_entry_error_quark (void);
 #define MWSC_TYPE_SCHEDULE_ENTRY mwsc_schedule_entry_get_type ()
 G_DECLARE_FINAL_TYPE (MwscScheduleEntry, mwsc_schedule_entry, MWSC, SCHEDULE_ENTRY, GObject)
 
-void                mwsc_schedule_entry_new_async        (GDBusConnection      *connection,
+void                mwsc_schedule_entry_new_full_async   (GDBusConnection      *connection,
                                                           const gchar          *name,
                                                           const gchar          *object_path,
                                                           GCancellable         *cancellable,
                                                           GAsyncReadyCallback   callback,
                                                           gpointer              user_data);
-MwscScheduleEntry  *mwsc_schedule_entry_new_finish       (GAsyncResult         *result,
+MwscScheduleEntry  *mwsc_schedule_entry_new_full_finish  (GAsyncResult         *result,
                                                           GError              **error);
 
 MwscScheduleEntry  *mwsc_schedule_entry_new_from_proxy   (GDBusProxy           *proxy,

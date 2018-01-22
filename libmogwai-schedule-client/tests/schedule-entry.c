@@ -67,18 +67,18 @@ test_service_construction_error (Fixture       *fixture,
   g_autoptr(GAsyncResult) result = NULL;
   g_autoptr(GError) error = NULL;
 
-  mwsc_schedule_entry_new_async (fixture->connection,
-                                 "com.endlessm.MogwaiSchedule1.Nonexistent",
-                                 "/com/endlessm/DownloadManager1/Nonexistent",
-                                 NULL,  /* cancellable */
-                                 async_result_cb,
-                                 &result);
+  mwsc_schedule_entry_new_full_async (fixture->connection,
+                                      "com.endlessm.MogwaiSchedule1.Nonexistent",
+                                      "/com/endlessm/DownloadManager1/Nonexistent",
+                                      NULL,  /* cancellable */
+                                      async_result_cb,
+                                      &result);
 
   while (result == NULL)
     g_main_context_iteration (NULL, TRUE);
 
   g_autoptr(MwscScheduleEntry) entry = NULL;
-  entry = mwsc_schedule_entry_new_finish (result, &error);
+  entry = mwsc_schedule_entry_new_full_finish (result, &error);
   g_assert_error (error, MWSC_SCHEDULE_ENTRY_ERROR,
                   MWSC_SCHEDULE_ENTRY_ERROR_UNKNOWN_ENTRY);
   g_assert_null (entry);

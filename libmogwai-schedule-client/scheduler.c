@@ -570,8 +570,98 @@ mwsc_scheduler_new_from_proxy (GDBusProxy  *proxy,
                          NULL);
 }
 
+static void get_bus_cb (GObject      *obj,
+                        GAsyncResult *result,
+                        gpointer      user_data);
+static void new_cb     (GObject      *obj,
+                        GAsyncResult *result,
+                        gpointer      user_data);
+
 /**
  * mwsc_scheduler_new_async:
+ * @cancellable: (nullable): a #GCancellable, or %NULL
+ * @callback: callback to invoke on completion
+ * @user_data: user data to pass to @callback
+ *
+ * Convenience version of mwsc_scheduler_new_full_async() which uses the default
+ * D-Bus connection, name and object path.
+ *
+ * Since: 0.1.0
+ */
+void
+mwsc_scheduler_new_async (GCancellable        *cancellable,
+                          GAsyncReadyCallback  callback,
+                          gpointer             user_data)
+{
+  g_return_if_fail (cancellable == NULL || G_IS_CANCELLABLE (cancellable));
+
+  g_autoptr(GTask) task = g_task_new (NULL, cancellable, callback, user_data);
+  g_task_set_source_tag (task, mwsc_scheduler_new_async);
+  g_bus_get (G_BUS_TYPE_SYSTEM, cancellable, get_bus_cb, g_steal_pointer (&task));
+}
+
+static void
+get_bus_cb (GObject      *obj,
+            GAsyncResult *result,
+            gpointer      user_data)
+{
+  g_autoptr(GTask) task = G_TASK (user_data);
+  g_autoptr(GError) error = NULL;
+
+  g_autoptr(GDBusConnection) connection = g_bus_get_finish (result, &error);
+
+  if (error != NULL)
+    {
+      g_task_return_error (task, g_steal_pointer (&error));
+      return;
+    }
+
+  mwsc_scheduler_new_full_async (connection,
+                                 "com.endlessm.MogwaiSchedule1",
+                                 "/com/endlessm/DownloadManager1",
+                                 g_task_get_cancellable (task),
+                                 new_cb, g_steal_pointer (&task));
+}
+
+static void
+new_cb (GObject      *obj,
+        GAsyncResult *result,
+        gpointer      user_data)
+{
+  g_autoptr(GTask) task = G_TASK (user_data);
+  g_autoptr(GError) error = NULL;
+
+  g_autoptr(MwscScheduler) scheduler = mwsc_scheduler_new_full_finish (result, &error);
+
+  if (error != NULL)
+    g_task_return_error (task, g_steal_pointer (&error));
+  else
+    g_task_return_pointer (task, g_steal_pointer (&scheduler), g_object_unref);
+}
+
+/**
+ * mwsc_scheduler_new_finish:
+ * @result: asynchronous operation result
+ * @error: return location for a #GError
+ *
+ * Finish initialising a #MwscScheduler. See mwsc_scheduler_new_async().
+ *
+ * Returns: (transfer full): initialised #MwscScheduler, or %NULL on error
+ * Since: 0.1.0
+ */
+MwscScheduler *
+mwsc_scheduler_new_finish (GAsyncResult  *result,
+                           GError       **error)
+{
+  g_return_val_if_fail (g_task_is_valid (result, NULL), NULL);
+  g_return_val_if_fail (g_async_result_is_tagged (result, mwsc_scheduler_new_async), NULL);
+  g_return_val_if_fail (error == NULL || *error == NULL, NULL);
+
+  return g_task_propagate_pointer (G_TASK (result), error);
+}
+
+/**
+ * mwsc_scheduler_new_full_async:
  * @connection: D-Bus connection to use
  * @name: (nullable): well-known or unique name of the peer to proxy from, or
  *    %NULL if @connection is not a message bus connection
@@ -588,12 +678,12 @@ mwsc_scheduler_new_from_proxy (GDBusProxy  *proxy,
  * Since: 0.1.0
  */
 void
-mwsc_scheduler_new_async (GDBusConnection     *connection,
-                          const gchar         *name,
-                          const gchar         *object_path,
-                          GCancellable        *cancellable,
-                          GAsyncReadyCallback  callback,
-                          gpointer             user_data)
+mwsc_scheduler_new_full_async (GDBusConnection     *connection,
+                               const gchar         *name,
+                               const gchar         *object_path,
+                               GCancellable        *cancellable,
+                               GAsyncReadyCallback  callback,
+                               gpointer             user_data)
 {
   g_return_if_fail (G_IS_DBUS_CONNECTION (connection));
   g_return_if_fail (name == NULL || g_dbus_is_name (name));
@@ -612,18 +702,18 @@ mwsc_scheduler_new_async (GDBusConnection     *connection,
 }
 
 /**
- * mwsc_scheduler_new_finish:
+ * mwsc_scheduler_new_full_finish:
  * @result: asynchronous operation result
  * @error: return location for a #GError
  *
- * Finish initialising a #MwscScheduler. See mwsc_scheduler_new_async().
+ * Finish initialising a #MwscScheduler. See mwsc_scheduler_new_full_async().
  *
  * Returns: (transfer full): initialised #MwscScheduler, or %NULL on error
  * Since: 0.1.0
  */
 MwscScheduler *
-mwsc_scheduler_new_finish (GAsyncResult  *result,
-                           GError       **error)
+mwsc_scheduler_new_full_finish (GAsyncResult  *result,
+                                GError       **error)
 {
   g_return_val_if_fail (G_IS_ASYNC_RESULT (result), NULL);
   g_return_val_if_fail (error == NULL || *error == NULL, NULL);
@@ -717,12 +807,12 @@ schedule_cb (GObject      *obj,
   const gchar *schedule_entry_path;
   g_variant_get (return_value, "(&o)", &schedule_entry_path);
 
-  mwsc_schedule_entry_new_async (g_dbus_proxy_get_connection (self->proxy),
-                                 g_dbus_proxy_get_name (self->proxy),
-                                 schedule_entry_path,
-                                 cancellable,
-                                 proxy_cb,
-                                 g_steal_pointer (&task));
+  mwsc_schedule_entry_new_full_async (g_dbus_proxy_get_connection (self->proxy),
+                                      g_dbus_proxy_get_name (self->proxy),
+                                      schedule_entry_path,
+                                      cancellable,
+                                      proxy_cb,
+                                      g_steal_pointer (&task));
 }
 
 static void
@@ -733,7 +823,7 @@ proxy_cb (GObject      *obj,
   g_autoptr(GTask) task = G_TASK (user_data);
   g_autoptr(GError) error = NULL;
 
-  g_autoptr(MwscScheduleEntry) entry = mwsc_schedule_entry_new_finish (result, &error);
+  g_autoptr(MwscScheduleEntry) entry = mwsc_schedule_entry_new_full_finish (result, &error);
 
   if (entry != NULL)
     g_task_return_pointer (task, g_steal_pointer (&entry), g_object_unref);
