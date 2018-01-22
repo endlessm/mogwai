@@ -184,15 +184,13 @@ download_uri_async (const gchar         *uri,
 
   g_task_set_task_data (task, g_steal_pointer (&data), (GDestroyNotify) download_data_free);
 
-  /* Create a scheduler and entry for the download.
-   * FIXME: For the moment, we just make the D-Bus calls manually. In future,
-   * this will probably be split out into libmogwai-schedule-client. */
-  mwsc_scheduler_new_async (connection,
-                            "com.endlessm.MogwaiSchedule1",
-                            "/com/endlessm/DownloadManager1",
-                            cancellable,
-                            scheduler_cb,
-                            g_steal_pointer (&task));
+  /* Create a scheduler and entry for the download. */
+  mwsc_scheduler_new_full_async (connection,
+                                 "com.endlessm.MogwaiSchedule1",
+                                 "/com/endlessm/DownloadManager1",
+                                 cancellable,
+                                 scheduler_cb,
+                                 g_steal_pointer (&task));
 }
 
 static gboolean
@@ -216,7 +214,7 @@ scheduler_cb (GObject      *obj,
   g_autoptr(GError) error = NULL;
 
   /* Grab the scheduler and create a schedule entry. */
-  data->scheduler = mwsc_scheduler_new_finish (result, &error);
+  data->scheduler = mwsc_scheduler_new_full_finish (result, &error);
 
   if (error != NULL)
     {
