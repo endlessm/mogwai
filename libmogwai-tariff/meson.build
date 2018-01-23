@@ -57,3 +57,5 @@ pkgconfig.generate(
   # see the `libraries` docs: http://mesonbuild.com/Pkgconfig-module.html#pkggenerate
   requires: [ 'gio-2.0', 'glib-2.0', 'gobject-2.0' ],
 )
+
+subdir('tests')
