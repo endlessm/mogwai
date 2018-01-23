@@ -8,6 +8,7 @@ project('mogwai','c',
   ],
 )
 
+gnome = import('gnome')
 pkgconfig = import('pkgconfig')
 
 prefix = get_option('prefix')
@@ -15,6 +16,7 @@ datadir = join_paths(prefix, get_option('datadir'))
 libdir = join_paths(prefix, get_option('libdir'))
 libexecdir = join_paths(prefix, get_option('libexecdir'))
 localedir = join_paths(prefix, get_option('localedir'))
+includedir = join_paths(prefix, get_option('includedir'))
 
 config_h = configuration_data()
 config_h.set_quoted('GETTEXT_PACKAGE', meson.project_name())
@@ -98,5 +100,6 @@ test_template = files('template.test.in')
 subdir('libhelper')
 subdir('libmogwai-schedule')
 subdir('libmogwai-schedule-client')
+subdir('libmogwai-tariff')
 subdir('mogwai-scheduled')
 subdir('mogwai-schedule-client')
