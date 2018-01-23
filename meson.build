@@ -8,6 +8,7 @@ project('mogwai','c',
   ],
 )
 
+gnome = import('gnome')
 pkgconfig = import('pkgconfig')
 
 prefix = get_option('prefix')
@@ -98,5 +99,6 @@ test_template = files('template.test.in')
 subdir('libhelper')
 subdir('libmogwai-schedule')
 subdir('libmogwai-schedule-client')
+subdir('libmogwai-tariff')
 subdir('mogwai-scheduled')
 subdir('mogwai-schedule-client')
