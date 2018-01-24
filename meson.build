@@ -16,6 +16,7 @@ datadir = join_paths(prefix, get_option('datadir'))
 libdir = join_paths(prefix, get_option('libdir'))
 libexecdir = join_paths(prefix, get_option('libexecdir'))
 localedir = join_paths(prefix, get_option('localedir'))
+includedir = join_paths(prefix, get_option('includedir'))
 
 config_h = configuration_data()
 config_h.set_quoted('GETTEXT_PACKAGE', meson.project_name())

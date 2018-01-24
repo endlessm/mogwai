@@ -19,9 +19,12 @@ libmogwai_tariff_deps = [
   dependency('gobject-2.0', version: '>= 2.54'),
 ]
 
+# FIXME: Would be good to use subdir here: https://github.com/mesonbuild/meson/issues/2969
+libmogwai_tariff_include_subdir = join_paths(libmogwai_tariff_api_name, 'libmogwai-tariff')
 libmogwai_tariff_enums = gnome.mkenums_simple('enums',
   sources: libmogwai_tariff_headers,
-  install: true,
+  install_header: true,
+  install_dir: join_paths(includedir, libmogwai_tariff_include_subdir),
 )
 
 libmogwai_tariff = library(libmogwai_tariff_api_name,
@@ -39,9 +42,8 @@ libmogwai_tariff_dep = declare_dependency(
 )
 
 # Public library bits.
-# FIXME: Install enums.h too. Listing libmogwai_tariff_enums[1] here doesn’t work.
 install_headers(libmogwai_tariff_headers,
-  subdir: join_paths(libmogwai_tariff_api_name, 'libmogwai-tariff'),
+  subdir: libmogwai_tariff_include_subdir,
 )
 
 pkgconfig.generate(
@@ -51,6 +53,7 @@ pkgconfig.generate(
   name: 'libmogwai-tariff',
   filebase: libmogwai_tariff_api_name,
   description: 'Library describing network connection tariffs.',
-  # FIXME: This should be derived from libmogwai_tariff_deps.
+  # FIXME: This should be derived from libmogwai_tariff_deps with Meson 0.45;
+  # see the `libraries` docs: http://mesonbuild.com/Pkgconfig-module.html#pkggenerate
   requires: [ 'gio-2.0', 'glib-2.0', 'gobject-2.0' ],
 )
