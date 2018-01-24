@@ -461,7 +461,7 @@ mwt_tariff_lookup_period (MwtTariff *self,
   /* Pick the shortest period. There should be no ties here, since having two
    * periods with an identical span and start date/time is disallowed. */
   MwtPeriod *shortest_period = NULL;
-  GTimeSpan shortest_period_duration;
+  GTimeSpan shortest_period_duration = G_MAXINT64;
   for (gsize i = 0; i < matches->len; i++)
     {
       MwtPeriod *period = g_ptr_array_index (matches, i);
@@ -469,7 +469,7 @@ mwt_tariff_lookup_period (MwtTariff *self,
       GDateTime *end = mwt_period_get_end (period);
       GTimeSpan duration = g_date_time_difference (end, start);
 
-      g_assert (duration != shortest_period_duration);
+      g_assert (shortest_period == NULL || duration != shortest_period_duration);
 
       if (shortest_period == NULL || duration < shortest_period_duration)
         {
