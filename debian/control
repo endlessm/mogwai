@@ -98,3 +98,29 @@ Description: Download Scheduler Daemon - scheduler client library tests
  .
  This package contains unit tests for the client APIs used to access the
  scheduler.
+
+Package: libmogwai-tariff-0
+Section: misc
+Architecture: any
+Depends:
+ ${misc:Depends},
+ ${shlibs:Depends},
+Description: Download Scheduler Daemon - tariff library
+ This package contains a download scheduler for saving bandwidth on metered
+ connections.
+ .
+ This package contains the client APIs used for loading and saving network
+ connection tariff information.
+
+Package: libmogwai-tariff-0-dev
+Section: libdevel
+Architecture: any
+Multi-arch: same
+Depends:
+ libglib2.0-dev,
+ ${misc:Depends},
+Description: Download Scheduler Daemon - tariff library development
+ This package contains a download scheduler for saving bandwidth on metered
+ connections.
+ .
+ This package contains development files for the tariff library.
