@@ -1,0 +1,48 @@
+#!/bin/sh
+
+# Run various smoketests on the mogwai-tariff client to check that
+# it (and libmogwai-tariff) work.
+
+# Copyright © 2018 Endless Mobile, Inc.
+#
+# This library is free software; you can redistribute it and/or
+# modify it under the terms of the GNU Lesser General Public
+# License as published by the Free Software Foundation; either
+# version 2.1 of the License, or (at your option) any later version.
+#
+# This library is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+# Lesser General Public License for more details.
+#
+# You should have received a copy of the GNU Lesser General Public
+# License along with this library; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+
+set -e
+exec 2>&1
+
+# FIXME: These could eventually be moved out to be installed-tests, so they
+# can be run by gnome-desktop-testing-runner *or* autopkgtest.
+cd "${AUTOPKGTEST_TMP}"
+NULL=
+
+# Building.
+mogwai-tariff-0 build tariff0 tariff0 \
+  2017-01-01T00:00:00Z 2018-01-01T00:00:00Z year 2 15000000 \
+  ${NULL}
+mogwai-tariff-0 build tariff1 tariff1 \
+  2017-01-01T00:00:00Z 2018-01-01T00:00:00Z none 0 unlimited \
+  2017-01-02T00:00:00Z 2017-01-02T05:00:00Z day 1 2000000 \
+  ${NULL}
+
+# Dumping.
+mogwai-tariff-0 dump tariff0
+mogwai-tariff-0 dump tariff1
+
+# Lookups (the second one should fail because the time is outside a period in
+# the tariff).
+mogwai-tariff-0 lookup tariff0 2017-01-01T01:00:00Z
+mogwai-tariff-0 lookup tariff0 2000-01-05T00:00:05Z && exit 1
+
+exit 0
