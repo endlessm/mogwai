@@ -248,19 +248,17 @@ load_tariff_from_file (const gchar  *tariff_path,
   g_autofree gchar *tariff_path_utf8 = g_filename_display_name (tariff_path);
 
   /* Load the file. */
-  g_autofree gchar *contents = NULL;
-  gsize contents_len_bytes = 0;
+  g_autoptr(GMappedFile) mmap = NULL;
 
-  if (!g_file_get_contents (tariff_path, &contents, &contents_len_bytes, error))
+  mmap = g_mapped_file_new (tariff_path, FALSE  /* read-only */, error);
+  if (mmap == NULL)
     {
       g_prefix_error (error, _("Error loading tariff file ‘%s’: "),
                       tariff_path_utf8);
       return NULL;
     }
 
-  g_autoptr(GBytes) bytes = g_bytes_new_take (g_steal_pointer (&contents),
-                                              contents_len_bytes);
-  contents_len_bytes = 0;
+  g_autoptr(GBytes) bytes = g_mapped_file_get_bytes (mmap);
 
   /* Load the tariff. */
   g_autoptr(MwtTariffLoader) loader = mwt_tariff_loader_new ();
