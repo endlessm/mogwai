@@ -176,8 +176,7 @@ download_uri_async (const gchar         *uri,
   data->session = soup_session_new ();
 
   /* Sort out the arguments for the schedule entry. */
-  g_auto(GVariantDict) dict;
-  g_variant_dict_init (&dict, NULL);
+  g_auto(GVariantDict) dict = G_VARIANT_DICT_INIT (NULL);
   g_variant_dict_insert (&dict, "Priority", "u", priority);
   g_variant_dict_insert (&dict, "Resumable", "b", resumable);
   data->parameters = g_variant_ref_sink (g_variant_dict_end (&dict));
