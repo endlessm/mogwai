@@ -447,9 +447,7 @@ entry_notify_cb (GObject    *obj,
   /* Propagate the signal as a D-Bus signal. Expect no errors, since the
    * documentation says this can only fail if the GVariant type is wrong. */
   const gchar *property_name = g_param_spec_get_name (pspec);
-  /* FIXME: Upstream this as G_VARIANT_DICT_INIT. */
-  g_auto(GVariantDict) changed_properties_dict;
-  g_variant_dict_init (&changed_properties_dict, NULL);
+  g_auto(GVariantDict) changed_properties_dict = G_VARIANT_DICT_INIT (NULL);
 
   if (g_str_equal (property_name, "priority"))
     g_variant_dict_insert (&changed_properties_dict,

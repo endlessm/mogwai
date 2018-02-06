@@ -525,8 +525,7 @@ properties_changed_cb (GDBusProxy *proxy,
   MwscScheduleEntry *self = MWSC_SCHEDULE_ENTRY (user_data);
   g_autoptr(GError) error = NULL;
 
-  g_auto(GVariantDict) dict;
-  g_variant_dict_init (&dict, changed_properties);
+  g_auto(GVariantDict) dict = G_VARIANT_DICT_INIT (changed_properties);
 
   g_object_freeze_notify (G_OBJECT (self));
 
