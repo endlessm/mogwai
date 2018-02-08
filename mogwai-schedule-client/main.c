@@ -183,6 +183,8 @@ download_uri_async (const gchar         *uri,
 
   g_task_set_task_data (task, g_steal_pointer (&data), (GDestroyNotify) download_data_free);
 
+  g_message ("Connecting to download scheduler");
+
   /* Create a scheduler and entry for the download. */
   mwsc_scheduler_new_full_async (connection,
                                  "com.endlessm.MogwaiSchedule1",
@@ -221,6 +223,8 @@ scheduler_cb (GObject      *obj,
       return;
     }
 
+  g_message ("Creating schedule entry");
+
   mwsc_scheduler_schedule_async (data->scheduler,
                                  data->parameters,
                                  cancellable,
@@ -252,6 +256,7 @@ schedule_cb (GObject      *obj,
 
   if (!download_now)
     {
+      g_message ("Waiting for permission to download");
       data->entry_notify_download_now_id =
           g_signal_connect (data->entry, "notify::download-now",
                             (GCallback) entry_notify_download_now_cb,
@@ -259,6 +264,7 @@ schedule_cb (GObject      *obj,
     }
   else
     {
+      g_message ("Immediately granted permission to download");
       start_download (task);
     }
 }
@@ -289,6 +295,7 @@ start_download (GTask *task)
   g_autoptr(GError) error = NULL;
 
   /* Start the download. */
+  g_message ("Starting download of ‘%s’", data->uri);
   data->request = soup_session_request (data->session, data->uri, &error);
 
   if (error != NULL)
@@ -380,6 +387,8 @@ splice_cb (GObject      *obj,
 
   g_assert (bytes_spliced >= 0);
   data->bytes_spliced = (gsize) bytes_spliced;
+
+  g_message ("Download complete; removing schedule entry");
 
   /* Now notify the scheduler that the download is complete.
    * Really, we should do this on all the error paths above, but we rely on
