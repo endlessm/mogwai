@@ -408,5 +408,10 @@ mws_scheduler_is_entry_active (MwsScheduler     *self,
 
   /* FIXME: Return a cached output of the scheduling algorithm here. */
   GNetworkMonitor *monitor = g_network_monitor_get_default ();
-  return !g_network_monitor_get_network_metered (monitor);
+  gboolean active = !g_network_monitor_get_network_metered (monitor);
+
+  g_debug ("%s: Active: %d (using network monitor: %s)",
+           G_STRFUNC, active, g_type_name (G_OBJECT_TYPE (monitor)));
+
+  return active;
 }
