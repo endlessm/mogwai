@@ -26,4 +26,5 @@ exec gnome-desktop-testing-runner \
 	libmogwai-schedule-1 \
 	libmogwai-schedule-client-0 \
 	libmogwai-tariff-0 \
+	mogwai-schedule-client-1 \
 	--

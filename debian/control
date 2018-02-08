@@ -36,6 +36,19 @@ Description: Download Scheduler Tools
  .
  This package contains tools for controlling the download scheduler.
 
+Package: mogwai-schedule-tools-tests
+Section: misc
+Architecture: any
+Depends:
+ ${misc:Depends},
+ ${shlibs:Depends},
+Description: Download Scheduler Tools - tests
+ This package contains a download scheduler for saving bandwidth on metered
+ connections.
+ .
+ This package contains unit tests for the tools for controlling the download
+ scheduler.
+
 Package: libmogwai-helper-1-tests
 Section: misc
 Architecture: any

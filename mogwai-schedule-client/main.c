@@ -36,8 +36,6 @@
 #include <unistd.h>
 
 
-/* FIXME: Add tests for this client. */
-
 /* Exit statuses. */
 typedef enum
 {
