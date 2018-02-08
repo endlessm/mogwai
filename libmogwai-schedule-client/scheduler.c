@@ -606,6 +606,7 @@ get_bus_cb (GObject      *obj,
             gpointer      user_data)
 {
   g_autoptr(GTask) task = G_TASK (user_data);
+  GCancellable *cancellable = g_task_get_cancellable (task);
   g_autoptr(GError) error = NULL;
 
   g_autoptr(GDBusConnection) connection = g_bus_get_finish (result, &error);
@@ -619,8 +620,7 @@ get_bus_cb (GObject      *obj,
   mwsc_scheduler_new_full_async (connection,
                                  "com.endlessm.MogwaiSchedule1",
                                  "/com/endlessm/DownloadManager1",
-                                 g_task_get_cancellable (task),
-                                 new_cb, g_steal_pointer (&task));
+                                 cancellable, new_cb, g_steal_pointer (&task));
 }
 
 static void
