@@ -420,6 +420,21 @@ async_result_cb (GObject      *obj,
   *result_out = g_object_ref (result);
 }
 
+static GLogWriterOutput
+log_writer_cb (GLogLevelFlags   log_level,
+               const GLogField *fields,
+               gsize            n_fields,
+               gpointer         user_data)
+{
+  gboolean *quiet_p = user_data;
+  gboolean quiet = *quiet_p;
+
+  if (log_level == G_LOG_LEVEL_MESSAGE && quiet)
+    return G_LOG_WRITER_HANDLED;
+  else
+    return g_log_writer_default (log_level, fields, n_fields, user_data);
+}
+
 int
 main (int   argc,
       char *argv[])
@@ -446,6 +461,7 @@ main (int   argc,
 
   /* Handle command line parameters. */
   g_autofree gchar *bus_address = NULL;
+  gboolean quiet = FALSE;
   gint priority = 0;
   gboolean resumable = FALSE;
   g_auto (GStrv) args = NULL;
@@ -455,6 +471,8 @@ main (int   argc,
       { "bus-address", 'a', G_OPTION_FLAG_NONE, G_OPTION_ARG_STRING, &bus_address,
         N_("Address of the D-Bus daemon to connect to (default: system bus)"),
         N_("ADDRESS") },
+      { "quiet", 'q', G_OPTION_FLAG_NONE, G_OPTION_ARG_NONE, &quiet,
+        N_("Only print error messages"), NULL },
       { "priority", 'p', G_OPTION_FLAG_NONE, G_OPTION_ARG_INT, &priority,
         N_("Priority of the download, where higher numbers are more important (default: 0)"),
         N_("PRIORITY") },
@@ -505,6 +523,9 @@ main (int   argc,
   const gchar *uri = args[0];
   const gchar *output_filename = args[1];
   g_autoptr(GFile) destination_file = g_file_new_for_commandline_arg (output_filename);
+
+  /* Log handling. */
+  g_log_set_writer_func (log_writer_cb, &quiet, NULL);
 
   /* Connect to D-Bus. If no address was specified on the command line, use the
    * system bus. */
