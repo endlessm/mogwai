@@ -9,7 +9,7 @@ mogwai\-schedule\-client — Download Scheduling Utility
 .SH SYNOPSIS
 .IX Header "SYNOPSIS"
 .\"
-\fBmogwai\-schedule\-client [\-a \fPbus\-address\fB] [\-p \fPpriority\fB] [\-r] \fPURI\fB \fPOUTPUT-FILENAME\fB
+\fBmogwai\-schedule\-client [\-a \fPbus\-address\fB] [\-q] [\-p \fPpriority\fB] [\-r] \fPURI\fB \fPOUTPUT-FILENAME\fB
 .\"
 .SH DESCRIPTION
 .IX Header "DESCRIPTION"
@@ -26,6 +26,20 @@ later; the client blocks until the download is started and complete.
 .IP "\fB\-a\fP, \fB\-\-bus\-address=\fP"
 Address of a D\-Bus message bus to connect to. This is intended for debugging
 use only. (Default: The system bus.)
+.\"
+.IP "\fB\-q\fP, \fB\-\-quiet\fP"
+Only output error messages, and no informational messages, as the download
+progresses. (Default: Output informational messages.)
+.\"
+.IP "\fB\-p\fP, \fB\-\-priority=\fP"
+Priority to apply to this download relative to other downloads in the same
+process. As only one download can happen per \fBmogwai\-schedule\-client\fP
+instance, this is a no-op. Higher numeric values indicate greater importance,
+and zero is the lowest priority. (Default: Zero.)
+.\"
+.IP "\fB\-r\fP, \fB\-\-resumable\fP"
+Indicate the download may be paused and resumed by the download scheduler as its
+scheduling algorithm permits. (Default: Download is not resumable.)
 .\"
 .SH "ENVIRONMENT"
 .IX Header "ENVIRONMENT"
