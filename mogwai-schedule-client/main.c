@@ -438,8 +438,20 @@ log_writer_cb (GLogLevelFlags   log_level,
   gboolean *quiet_p = user_data;
   gboolean quiet = *quiet_p;
 
-  if (log_level == G_LOG_LEVEL_MESSAGE && quiet)
-    return G_LOG_WRITER_HANDLED;
+  if (log_level == G_LOG_LEVEL_MESSAGE)
+    {
+      const gchar *message = NULL;
+      for (gsize i = 0; i < n_fields && message == NULL; i++)
+        {
+          if (g_str_equal (fields[i].key, "MESSAGE"))
+            message = fields[i].value;
+        }
+
+      if (!quiet)
+        g_print ("%s\n", message);
+
+      return G_LOG_WRITER_HANDLED;
+    }
   else
     return g_log_writer_default (log_level, fields, n_fields, user_data);
 }
