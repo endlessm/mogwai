@@ -36,8 +36,6 @@
 #include <unistd.h>
 
 
-/* FIXME: Add tests for this client. */
-
 /* Exit statuses. */
 typedef enum
 {
@@ -438,8 +436,20 @@ log_writer_cb (GLogLevelFlags   log_level,
   gboolean *quiet_p = user_data;
   gboolean quiet = *quiet_p;
 
-  if (log_level == G_LOG_LEVEL_MESSAGE && quiet)
-    return G_LOG_WRITER_HANDLED;
+  if (log_level == G_LOG_LEVEL_MESSAGE)
+    {
+      const gchar *message = NULL;
+      for (gsize i = 0; i < n_fields && message == NULL; i++)
+        {
+          if (g_str_equal (fields[i].key, "MESSAGE"))
+            message = fields[i].value;
+        }
+
+      if (!quiet)
+        g_print ("%s\n", message);
+
+      return G_LOG_WRITER_HANDLED;
+    }
   else
     return g_log_writer_default (log_level, fields, n_fields, user_data);
 }
@@ -513,6 +523,15 @@ main (int   argc,
       g_autofree gchar *message = NULL;
       message = g_strdup_printf (_("Option parsing failed: %s"),
                                  _("A URI and OUTPUT-FILENAME are required"));
+      g_printerr ("%s: %s\n", argv[0], message);
+
+      return EXIT_INVALID_OPTIONS;
+    }
+  if (args[2] != NULL)
+    {
+      g_autofree gchar *message = NULL;
+      message = g_strdup_printf (_("Option parsing failed: %s"),
+                                 _("Too many arguments provided"));
       g_printerr ("%s: %s\n", argv[0], message);
 
       return EXIT_INVALID_OPTIONS;

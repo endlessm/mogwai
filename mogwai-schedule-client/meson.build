@@ -18,3 +18,5 @@ executable('mogwai-schedule-client-' + mogwai_scheduled_api_version,
 
 # Documentation
 install_man('docs/mogwai-schedule-client.8')
+
+subdir('tests')
