@@ -249,7 +249,8 @@ schedule_cb (GObject      *obj,
       return;
     }
 
-  /* FIXME: We should probably check for cancellation while waiting here. */
+  /* FIXME: We should probably check for cancellation while waiting here.
+   * Similarly, check for #MwscScheduleEntry::invalidated. */
   gboolean download_now = mwsc_schedule_entry_get_download_now (data->entry);
 
   if (!download_now)
