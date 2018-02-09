@@ -529,6 +529,15 @@ main (int   argc,
 
       return EXIT_INVALID_OPTIONS;
     }
+  if (args[2] != NULL)
+    {
+      g_autofree gchar *message = NULL;
+      message = g_strdup_printf (_("Option parsing failed: %s"),
+                                 _("Too many arguments provided"));
+      g_printerr ("%s: %s\n", argv[0], message);
+
+      return EXIT_INVALID_OPTIONS;
+    }
 
   if (priority < 0 || (guint) priority > G_MAXUINT32)
     {
