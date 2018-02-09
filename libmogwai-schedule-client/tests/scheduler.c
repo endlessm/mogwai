@@ -30,6 +30,7 @@
 
 typedef struct
 {
+  GTestDBus *bus;  /* (owned) */
   GDBusConnection *connection;  /* (owned) */
 } Fixture;
 
@@ -39,7 +40,15 @@ setup (Fixture       *fixture,
 {
   g_autoptr(GError) error = NULL;
 
-  fixture->connection = g_bus_get_sync (G_BUS_TYPE_SESSION, NULL, &error);
+  fixture->bus = g_test_dbus_new (G_TEST_DBUS_NONE);
+  g_test_dbus_up (fixture->bus);
+
+  fixture->connection = g_dbus_connection_new_for_address_sync (g_test_dbus_get_bus_address (fixture->bus),
+                                                                G_DBUS_CONNECTION_FLAGS_AUTHENTICATION_CLIENT |
+                                                                G_DBUS_CONNECTION_FLAGS_MESSAGE_BUS_CONNECTION,
+                                                                NULL,
+                                                                NULL,
+                                                                &error);
   g_assert_no_error (error);
 }
 
@@ -47,7 +56,12 @@ static void
 teardown (Fixture       *fixture,
           gconstpointer  test_data)
 {
+  if (fixture->connection != NULL)
+    g_dbus_connection_close_sync (fixture->connection, NULL, NULL);
   g_clear_object (&fixture->connection);
+
+  g_test_dbus_down (fixture->bus);
+  g_clear_object (&fixture->bus);
 }
 
 static void
