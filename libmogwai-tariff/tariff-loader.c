@@ -29,6 +29,8 @@
 #include <libmogwai-tariff/period.h>
 #include <libmogwai-tariff/tariff-loader.h>
 #include <libmogwai-tariff/tariff.h>
+#include <malloc.h>
+#include <stdlib.h>
 
 
 static void mwt_tariff_loader_dispose (GObject *object);
@@ -100,6 +102,26 @@ mwt_tariff_loader_new (void)
   return g_object_new (MWT_TYPE_TARIFF_LOADER, NULL);
 }
 
+/* Allocate an 8-aligned block of @size bytes of memory.
+ * FIXME: This should not be necessary; g_variant_new_from_bytes() should do
+ * this for us. */
+static gpointer
+align_malloc (gsize size)
+{
+  gpointer mem;
+
+  if (posix_memalign (&mem, 8, size))
+    g_error ("posix_memalign failed");
+
+  return mem;
+}
+
+static void
+align_free (gpointer mem)
+{
+  free (mem);
+}
+
 /**
  * mwt_tariff_loader_load_from_bytes:
  * @self: a #MwtTariffLoader
@@ -113,8 +135,9 @@ mwt_tariff_loader_new (void)
  * On success, the loaded tariff will be available by calling
  * mwt_tariff_loader_get_tariff().
  *
- * Note: @bytes must be backed by memory that is at least pointer aligned.
- * Otherwise, this function will internally create a copy of the memory.
+ * Note: @bytes must be backed by memory that is at least 8-byte aligned (even
+ * on platforms with narrower native alignment). Otherwise, this function will
+ * internally create a copy of the memory.
  *
  * Returns: %TRUE on success, %FALSE otherwise
  * Since: 0.1.0
@@ -131,10 +154,17 @@ mwt_tariff_loader_load_from_bytes (MwtTariffLoader  *self,
   /* Clear any existing result. */
   g_clear_object (&self->final_tariff);
 
+  /* FIXME: GLib really should handle this itself. We need to 8-align as the
+   * type of our variant is (sqv), and `v` must be 8-aligned. */
   g_autoptr(GBytes) aligned_bytes = NULL;
-  if (((guintptr) g_bytes_get_data (bytes, NULL)) % sizeof (gpointer) != 0)
-    aligned_bytes = g_bytes_new (g_bytes_get_data (bytes, NULL),
-                                 g_bytes_get_size (bytes));
+  if (((guintptr) g_bytes_get_data (bytes, NULL)) % 8 != 0)
+    {
+      gsize aligned_data_len = g_bytes_get_size (bytes);
+      guint8 *aligned_data = align_malloc (aligned_data_len);
+      memcpy (aligned_data, g_bytes_get_data (bytes, NULL), aligned_data_len);
+      aligned_bytes = g_bytes_new_with_free_func (g_bytes_get_data (bytes, NULL),
+                                                  aligned_data_len, align_free, NULL);
+    }
   else
     aligned_bytes = g_bytes_ref (bytes);
 

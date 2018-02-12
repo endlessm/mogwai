@@ -58,4 +58,8 @@ pkgconfig.generate(
   requires: [ 'gio-2.0', 'glib-2.0', 'gobject-2.0' ],
 )
 
+if not cc.has_function('posix_memalign')
+  error('posix_memalign() function not found')
+endif
+
 subdir('tests')
