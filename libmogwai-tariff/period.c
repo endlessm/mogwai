@@ -352,6 +352,10 @@ mwt_period_validate (GDateTime            *start,
  * their default values. The varargs are specified in the same format as used
  * by g_object_new(), and the list must be %NULL terminated.
  *
+ * Note that any 64-bit varargs must be cast to the correct type (for example,
+ * using G_GUINT64_CONSTANT()), or the wrong number of bytes will be put on
+ * the varargs list on non-64-bit architectures.
+ *
  * All inputs to this function must have been validated with
  * mwt_period_validate() first. It is a programmer error to provide invalid
  * inputs.
