@@ -113,6 +113,9 @@ mwt_tariff_loader_new (void)
  * On success, the loaded tariff will be available by calling
  * mwt_tariff_loader_get_tariff().
  *
+ * Note: @bytes must be backed by memory that is at least pointer aligned.
+ * Otherwise, this function will internally create a copy of the memory.
+ *
  * Returns: %TRUE on success, %FALSE otherwise
  * Since: 0.1.0
  */
@@ -128,8 +131,15 @@ mwt_tariff_loader_load_from_bytes (MwtTariffLoader  *self,
   /* Clear any existing result. */
   g_clear_object (&self->final_tariff);
 
+  g_autoptr(GBytes) aligned_bytes = NULL;
+  if (((guintptr) g_bytes_get_data (bytes, NULL)) % sizeof (gpointer) != 0)
+    aligned_bytes = g_bytes_new (g_bytes_get_data (bytes, NULL),
+                                 g_bytes_get_size (bytes));
+  else
+    aligned_bytes = g_bytes_ref (bytes);
+
   g_autoptr(GVariant) variant = NULL;
-  variant = g_variant_new_from_bytes (G_VARIANT_TYPE ("(sqv)"), bytes, FALSE);
+  variant = g_variant_new_from_bytes (G_VARIANT_TYPE ("(sqv)"), aligned_bytes, FALSE);
 
   return mwt_tariff_loader_load_from_variant (self, variant, error);
 }
