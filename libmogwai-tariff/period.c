@@ -167,7 +167,7 @@ mwt_period_class_init (MwtPeriodClass *klass)
    * in bytes. If this is zero, no downloading is allowed during any repeat of
    * this period. If it is %G_MAXUINT64, no limit is applied.
    *
-   * The default is %_MAXUINT64 (no limit).
+   * The default is %G_MAXUINT64 (no limit).
    *
    * Since: 0.1.0
    */
