@@ -65,7 +65,7 @@ test_period_properties (void)
 
   g_autoptr(MwtPeriod) period = NULL;
   period = mwt_period_new (start, end, MWT_PERIOD_REPEAT_HOUR, 1,
-                           "capacity-limit", 5671,
+                           "capacity-limit", (guint64) 5671,
                            NULL);
   g_assert_true (MWT_IS_PERIOD (period));
 

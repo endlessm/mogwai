@@ -71,7 +71,7 @@ test_tariff_lookup (void)
   g_autoptr(GDateTime) period1_end = g_date_time_new_utc (2018, 2, 22, 0, 0, 0);
   g_autoptr(MwtPeriod) period1 = mwt_period_new (period1_start, period1_end,
                                                  MWT_PERIOD_REPEAT_NONE, 0,
-                                                 "capacity-limit", 2000,
+                                                 "capacity-limit", (guint64) 2000,
                                                  NULL);
   g_ptr_array_add (periods, period1);
 
@@ -79,7 +79,7 @@ test_tariff_lookup (void)
   g_autoptr(GDateTime) period2_end = g_date_time_new_utc (2018, 1, 22, 12, 0, 0);
   g_autoptr(MwtPeriod) period2 = mwt_period_new (period2_start, period2_end,
                                                  MWT_PERIOD_REPEAT_WEEK, 1,
-                                                 "capacity-limit", 1000,
+                                                 "capacity-limit", (guint64) 1000,
                                                  NULL);
   g_ptr_array_add (periods, period2);
 

@@ -167,7 +167,7 @@ mwt_period_class_init (MwtPeriodClass *klass)
    * in bytes. If this is zero, no downloading is allowed during any repeat of
    * this period. If it is %G_MAXUINT64, no limit is applied.
    *
-   * The default is %_MAXUINT64 (no limit).
+   * The default is %G_MAXUINT64 (no limit).
    *
    * Since: 0.1.0
    */
@@ -351,6 +351,10 @@ mwt_period_validate (GDateTime            *start,
  * used to specify the limits which apply to this period and which differ from
  * their default values. The varargs are specified in the same format as used
  * by g_object_new(), and the list must be %NULL terminated.
+ *
+ * Note that any 64-bit varargs must be cast to the correct type (for example,
+ * using G_GUINT64_CONSTANT()), or the wrong number of bytes will be put on
+ * the varargs list on non-64-bit architectures.
  *
  * All inputs to this function must have been validated with
  * mwt_period_validate() first. It is a programmer error to provide invalid
