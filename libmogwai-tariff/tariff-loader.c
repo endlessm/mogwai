@@ -157,13 +157,14 @@ mwt_tariff_loader_load_from_bytes (MwtTariffLoader  *self,
   /* FIXME: GLib really should handle this itself. We need to 8-align as the
    * type of our variant is (sqv), and `v` must be 8-aligned. */
   g_autoptr(GBytes) aligned_bytes = NULL;
-  if (((guintptr) g_bytes_get_data (bytes, NULL)) % 8 != 0)
+  gsize unaligned_data_len;
+  gconstpointer unaligned_data = g_bytes_get_data (bytes, &unaligned_data_len);
+  if (((guintptr) unaligned_data) % 8 != 0)
     {
-      gsize aligned_data_len = g_bytes_get_size (bytes);
-      guint8 *aligned_data = align_malloc (aligned_data_len);
-      memcpy (aligned_data, g_bytes_get_data (bytes, NULL), aligned_data_len);
-      aligned_bytes = g_bytes_new_with_free_func (g_bytes_get_data (bytes, NULL),
-                                                  aligned_data_len, align_free, NULL);
+      guint8 *aligned_data = align_malloc (unaligned_data_len);
+      memcpy (aligned_data, unaligned_data, unaligned_data_len);
+      aligned_bytes = g_bytes_new_with_free_func (aligned_data, unaligned_data_len,
+                                                  align_free, NULL);
     }
   else
     aligned_bytes = g_bytes_ref (bytes);

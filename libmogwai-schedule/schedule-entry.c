@@ -340,10 +340,14 @@ mws_schedule_entry_new_from_variant (const gchar  *owner,
   g_value_set_string (&value, owner);
   g_array_append_val (values, value);
 
+  /* The cast of values->data to (const GValue *) triggers a -Wcast-align warning
+   * on ARM without the cast through (void *). The array body is guaranteed to
+   * be pointer aligned as the minimum array body size (from garray.c) is
+   * 16 bytes. */
   g_assert (names->len == values->len);
   return MWS_SCHEDULE_ENTRY (g_object_new_with_properties (MWS_TYPE_SCHEDULE_ENTRY, names->len,
                                                            (const gchar **) names->pdata,
-                                                           (const GValue *) values->data));
+                                                           (const GValue *) (void *) values->data));
 }
 
 /**
