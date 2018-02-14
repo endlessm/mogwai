@@ -92,6 +92,7 @@ Architecture: any
 Multi-arch: same
 Depends:
  libglib2.0-dev,
+ libmogwai-schedule-client-0 (= ${binary:Version}),
  ${misc:Depends},
 Description: Download Scheduler Daemon - scheduler client library development
  This package contains a download scheduler for saving bandwidth on metered
@@ -131,6 +132,7 @@ Architecture: any
 Multi-arch: same
 Depends:
  libglib2.0-dev,
+ libmogwai-tariff-0 (= ${binary:Version}),
  ${misc:Depends},
 Description: Download Scheduler Daemon - tariff library development
  This package contains a download scheduler for saving bandwidth on metered
