@@ -289,19 +289,26 @@ mws_scheduler_update_entries (MwsScheduler  *self,
   for (gsize i = 0; added != NULL && i < added->len; i++)
     {
       MwsScheduleEntry *entry = added->pdata[i];
+      const gchar *entry_id = mws_schedule_entry_get_id (entry);
       g_return_val_if_fail (MWS_IS_SCHEDULE_ENTRY (entry), FALSE);
 
-      g_debug ("Adding schedule entry ‘%s’.",
-               mws_schedule_entry_get_id (entry));
+      g_debug ("Adding schedule entry ‘%s’.", entry_id);
 
-      if (g_hash_table_replace (self->entries,
-                                mws_schedule_entry_get_id (entry),
-                                g_object_ref (entry)))
-        g_ptr_array_add (actually_added, g_object_ref (entry));
+      if (g_hash_table_replace (self->entries, entry_id, g_object_ref (entry)))
+        {
+          g_ptr_array_add (actually_added, g_object_ref (entry));
+        }
+      else
+        {
+          g_debug ("Schedule entry ‘%s’ already existed in MwsScheduler %p.",
+                   entry_id, self);
+        }
     }
 
   if (actually_added->len > 0 || actually_removed->len > 0)
     {
+      g_debug ("%s: Emitting entries-changed with %u added, %u removed",
+               G_STRFUNC, actually_added->len, actually_removed->len);
       g_object_notify (G_OBJECT (self), "entries");
       g_signal_emit_by_name (G_OBJECT (self), "entries-changed",
                              actually_added, actually_removed);
