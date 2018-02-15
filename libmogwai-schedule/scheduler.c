@@ -120,10 +120,10 @@ mws_scheduler_class_init (MwsSchedulerClass *klass)
   /**
    * MwsScheduler::entries-changed:
    * @self: a #MwsScheduler
-   * @added: (element-type MwsScheduleEntry): potentially empty or %NULL array
-   *     of added entries
-   * @removed: (element-type MwsScheduleEntry): potentially empty or %NULL array
-   *     of removed entries
+   * @added: (element-type MwsScheduleEntry) (nullable): potentially empty or
+   *     %NULL array of added entries (a %NULL array is equivalent to an empty one)
+   * @removed: (element-type MwsScheduleEntry) (nullable): potentially empty or
+   *     %NULL array of removed entries (a %NULL array is equivalent to an empty one)
    *
    * Emitted when the set of schedule entries known to the scheduler changes. It
    * is emitted at the same time as #GObject::notify for the
