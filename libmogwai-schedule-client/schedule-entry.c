@@ -659,25 +659,27 @@ proxy_init_cb (GObject      *obj,
 {
   g_autoptr(GTask) task = G_TASK (user_data);
   MwscScheduleEntry *self = g_task_get_source_object (task);
-  g_autoptr(GError) error = NULL;
+  g_autoptr(GError) local_error = NULL;
 
   /* Get the proxy. */
   g_assert (self->proxy == NULL);
-  self->proxy = g_dbus_proxy_new_finish (result, &error);
+  self->proxy = g_dbus_proxy_new_finish (result, &local_error);
 
   g_assert (self->initialising);
   self->initialising = FALSE;
 
-  if (error != NULL)
+  if (local_error != NULL)
     {
-      g_task_return_error (task, g_steal_pointer (&error));
+      g_propagate_error (&self->init_error, g_error_copy (local_error));
+      self->init_success = FALSE;
+      g_task_return_error (task, g_steal_pointer (&local_error));
       return;
     }
 
-  if (set_up_proxy (self, &error))
+  if (set_up_proxy (self, &local_error))
     g_task_return_boolean (task, TRUE);
   else
-    g_task_return_error (task, g_steal_pointer (&error));
+    g_task_return_error (task, g_steal_pointer (&local_error));
 }
 
 static gboolean
