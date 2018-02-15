@@ -127,16 +127,20 @@ static void mws_schedule_service_scheduler_schedule           (MwsScheduleServic
                                                                GVariant              *parameters,
                                                                GDBusMethodInvocation *invocation);
 
-static void entries_changed_cb (MwsScheduler    *scheduler,
-                                GPtrArray       *added,
-                                GPtrArray       *removed,
-                                gpointer         user_data);
-static void entry_notify_cb    (GObject         *obj,
-                                GParamSpec      *pspec,
-                                gpointer         user_data);
-static void peer_vanished_cb   (GDBusConnection *connection,
-                                const gchar     *name,
-                                gpointer         user_data);
+static void entries_changed_cb        (MwsScheduler    *scheduler,
+                                       GPtrArray       *added,
+                                       GPtrArray       *removed,
+                                       gpointer         user_data);
+static void active_entries_changed_cb (MwsScheduler    *scheduler,
+                                       GPtrArray       *added,
+                                       GPtrArray       *removed,
+                                       gpointer         user_data);
+static void entry_notify_cb           (GObject         *obj,
+                                       GParamSpec      *pspec,
+                                       gpointer         user_data);
+static void peer_vanished_cb          (GDBusConnection *connection,
+                                       const gchar     *name,
+                                       gpointer         user_data);
 
 static const GDBusErrorEntry scheduler_error_map[] =
   {
@@ -378,6 +382,8 @@ mws_schedule_service_set_property (GObject      *object,
        * set of schedule entries in constructed(). */
       g_signal_connect (self->scheduler, "entries-changed",
                         (GCallback) entries_changed_cb, self);
+      g_signal_connect (self->scheduler, "active-entries-changed",
+                        (GCallback) active_entries_changed_cb, self);
 
       break;
     }
@@ -433,6 +439,63 @@ entries_changed_cb (MwsScheduler *scheduler,
       g_signal_connect (entry, "notify",
                         (GCallback) entry_notify_cb, self);
     }
+}
+
+static void
+emit_download_now_changed (MwsScheduleService *self,
+                           GPtrArray          *entries,
+                           gboolean            download_now)
+{
+  g_auto(GVariantDict) changed_properties_dict = G_VARIANT_DICT_INIT (NULL);
+  g_variant_dict_insert (&changed_properties_dict,
+                         "DownloadNow", "b", download_now);
+
+  g_autoptr(GVariant) parameters = NULL;
+  parameters = g_variant_ref_sink (
+      g_variant_new ("(s@a{sv}as)",
+                     "com.endlessm.DownloadManager1.ScheduleEntry",
+                     g_variant_dict_end (&changed_properties_dict),
+                     NULL));
+
+  for (gsize i = 0; entries != NULL && i < entries->len; i++)
+    {
+      MwsScheduleEntry *entry = MWS_SCHEDULE_ENTRY (entries->pdata[i]);
+      g_autoptr(GError) local_error = NULL;
+
+      g_debug ("Notifying entry ‘%s’ as %s.",
+               mws_schedule_entry_get_id (entry),
+               download_now ? "active" : "inactive");
+
+      g_autofree gchar *entry_path = schedule_entry_to_object_path (self, entry);
+
+      g_dbus_connection_emit_signal (self->connection,
+                                     mws_schedule_entry_get_owner (entry),
+                                     entry_path,
+                                     "org.freedesktop.DBus.Properties",
+                                     "PropertiesChanged",
+                                     parameters,
+                                     &local_error);
+      if (local_error != NULL)
+        g_debug ("Error emitting PropertiesChanged signal: %s",
+                 local_error->message);
+    }
+}
+
+static void
+active_entries_changed_cb (MwsScheduler *scheduler,
+                           GPtrArray    *added,
+                           GPtrArray    *removed,
+                           gpointer      user_data)
+{
+  MwsScheduleService *self = MWS_SCHEDULE_SERVICE (user_data);
+
+  /* These entries have become inactive (told to stop downloading).
+   * Signal that on the bus. */
+  emit_download_now_changed (self, removed, FALSE);
+
+  /* These entries have become active (told they can start downloading).
+   * Signal that on the bus. */
+  emit_download_now_changed (self, added, TRUE);
 }
 
 static void
