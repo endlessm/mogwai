@@ -33,6 +33,33 @@
 /* These errors do go over the bus, and are registered in schedule-service.c. */
 G_DEFINE_QUARK (MwsSchedulerError, mws_scheduler_error)
 
+/* Cached state for a schedule entry, including its current active state, and
+ * any calculated state which is not trivially derivable from the properties of
+ * the #MwsScheduleEntry itself. */
+typedef struct
+{
+  gboolean is_active;
+} EntryData;
+
+static EntryData *entry_data_new  (void);
+static void       entry_data_free (EntryData *data);
+
+G_DEFINE_AUTOPTR_CLEANUP_FUNC (EntryData, entry_data_free);
+
+/* Create a new #EntryData struct with default values. */
+static EntryData *
+entry_data_new (void)
+{
+  g_autoptr(EntryData) data = g_new0 (EntryData, 1);
+  return g_steal_pointer (&data);
+}
+
+static void
+entry_data_free (EntryData *data)
+{
+  g_free (data);
+}
+
 static void mws_scheduler_dispose      (GObject      *object);
 
 static void mws_scheduler_get_property (GObject      *object,
@@ -60,6 +87,11 @@ struct _MwsScheduler
   /* Mapping from entry ID to (not nullable) entry. */
   GHashTable *entries;  /* (owned) (element-type utf8 MwsScheduleEntry) */
   gsize max_entries;
+
+  /* Mapping from entry ID to (not nullable) entry data. We can’t use the same
+   * hash table as @entries since we need to be able to return that one in
+   * mws_scheduler_get_entries(). */
+  GHashTable *entries_data;  /* (owned) (element-type utf8 EntryData) */
 };
 
 /* Arbitrarily chosen. */
@@ -137,6 +169,27 @@ mws_scheduler_class_init (MwsSchedulerClass *klass)
   g_signal_new ("entries-changed", G_TYPE_FROM_CLASS (klass),
                 G_SIGNAL_RUN_LAST, 0, NULL, NULL, NULL,
                 G_TYPE_NONE, 2, G_TYPE_PTR_ARRAY, G_TYPE_PTR_ARRAY);
+
+  /**
+   * MwsScheduler::active-entries-changed:
+   * @self: a #MwsScheduler
+   * @added: (element-type MwsScheduleEntry) (nullable): potentially empty or
+   *     %NULL array of newly-active entries (a %NULL array is equivalent to an
+   *     empty one)
+   * @removed: (element-type MwsScheduleEntry) (nullable): potentially empty or
+   *     %NULL array of newly-inactive entries (a %NULL array is equivalent to
+   *     an empty one)
+   *
+   * Emitted when the set of active entries changes; i.e. when an entry is
+   * allowed to start downloading, or when one is requested to stop downloading.
+   *
+   * There will be at least one entry in one of the arrays.
+   *
+   * Since: 0.1.0
+   */
+  g_signal_new ("active-entries-changed", G_TYPE_FROM_CLASS (klass),
+                G_SIGNAL_RUN_LAST, 0, NULL, NULL, NULL,
+                G_TYPE_NONE, 2, G_TYPE_PTR_ARRAY, G_TYPE_PTR_ARRAY);
 }
 
 static void
@@ -145,6 +198,8 @@ mws_scheduler_init (MwsScheduler *self)
   self->entries = g_hash_table_new_full (g_str_hash, g_str_equal,
                                          NULL, g_object_unref);
   self->max_entries = DEFAULT_MAX_ENTRIES;
+  self->entries_data = g_hash_table_new_full (g_str_hash, g_str_equal,
+                                              NULL, (GDestroyNotify) entry_data_free);
 }
 
 static void
@@ -153,6 +208,7 @@ mws_scheduler_dispose (GObject *object)
   MwsScheduler *self = MWS_SCHEDULER (object);
 
   g_clear_pointer (&self->entries, g_hash_table_unref);
+  g_clear_pointer (&self->entries_data, g_hash_table_unref);
 
   /* Chain up to the parent class */
   G_OBJECT_CLASS (mws_scheduler_parent_class)->dispose (object);
@@ -277,12 +333,14 @@ mws_scheduler_update_entries (MwsScheduler  *self,
         {
           g_autoptr(MwsScheduleEntry) entry = value;
           g_hash_table_steal (self->entries, entry_id);
+          g_assert (g_hash_table_remove (self->entries_data, entry_id));
           g_ptr_array_add (actually_removed, g_steal_pointer (&entry));
         }
       else
         {
           g_debug ("Schedule entry ‘%s’ did not exist in MwsScheduler %p.",
                    entry_id, self);
+          g_assert (g_hash_table_lookup (self->entries_data, entry_id) == NULL);
         }
     }
 
@@ -296,12 +354,14 @@ mws_scheduler_update_entries (MwsScheduler  *self,
 
       if (g_hash_table_replace (self->entries, entry_id, g_object_ref (entry)))
         {
+          g_hash_table_replace (self->entries_data, entry_id, entry_data_new ());
           g_ptr_array_add (actually_added, g_object_ref (entry));
         }
       else
         {
           g_debug ("Schedule entry ‘%s’ already existed in MwsScheduler %p.",
                    entry_id, self);
+          g_assert (g_hash_table_lookup (self->entries_data, entry_id) != NULL);
         }
     }
 
@@ -312,6 +372,9 @@ mws_scheduler_update_entries (MwsScheduler  *self,
       g_object_notify (G_OBJECT (self), "entries");
       g_signal_emit_by_name (G_OBJECT (self), "entries-changed",
                              actually_added, actually_removed);
+
+      /* Trigger a reschedule due to the new entries. */
+      mws_scheduler_reschedule (self);
     }
 
   return TRUE;
@@ -416,12 +479,88 @@ mws_scheduler_is_entry_active (MwsScheduler     *self,
   g_return_val_if_fail (MWS_IS_SCHEDULER (self), FALSE);
   g_return_val_if_fail (MWS_IS_SCHEDULE_ENTRY (entry), FALSE);
 
-  /* FIXME: Return a cached output of the scheduling algorithm here. */
+  const gchar *entry_id = mws_schedule_entry_get_id (entry);
+  const EntryData *data = g_hash_table_lookup (self->entries_data, entry_id);
+  g_return_val_if_fail (data != NULL, FALSE);
+
+  g_debug ("%s: Entry ‘%s’, active: %s",
+           G_STRFUNC, entry_id, data->is_active ? "yes" : "no");
+
+  return data->is_active;
+}
+
+/**
+ * mws_scheduler_reschedule:
+ * @self: a #MwsScheduler
+ *
+ * Calculate an updated download schedule for all currently active entries, and
+ * update the set of active entries if necessary. Changes to the set of active
+ * entries will be signalled using #MwsScheduler::active-entries-changed.
+ *
+ * This is called automatically when the set of entries in the scheduler
+ * changes, or when any relevant input to the scheduler changes; so should not
+ * normally need to be called manually. It is exposed mainly for unit testing.
+ *
+ * Since: 0.1.0
+ */
+void
+mws_scheduler_reschedule (MwsScheduler *self)
+{
+  g_return_if_fail (MWS_IS_SCHEDULER (self));
+
+  g_debug ("%s: Rescheduling %u entries",
+           G_STRFUNC, g_hash_table_size (self->entries));
+
+  /* Sanity checks. */
+  g_assert (g_hash_table_size (self->entries) ==
+            g_hash_table_size (self->entries_data));
+
+  /* Fast path. */
+  if (g_hash_table_size (self->entries) == 0)
+    return;
+
+  /* Can we schedule everything for download? */
+  /* FIXME: Abstract the network monitor to query NetworkManager directly. */
   GNetworkMonitor *monitor = g_network_monitor_get_default ();
   gboolean active = !g_network_monitor_get_network_metered (monitor);
 
   g_debug ("%s: Active: %d (using network monitor: %s)",
            G_STRFUNC, active, g_type_name (G_OBJECT_TYPE (monitor)));
 
-  return active;
+  /* For each entry, see if it’s permissible to start downloading it. For the
+   * moment, we only use whether the network is metered as a basis for this
+   * calculation. In future, we can factor in the tariff on each connection,
+   * bandwidth usage, capacity limits, etc. */
+  g_autoptr(GPtrArray) entries_now_active = g_ptr_array_new_with_free_func (NULL);
+  g_autoptr(GPtrArray) entries_were_active = g_ptr_array_new_with_free_func (NULL);
+
+  GHashTableIter iter;
+  gpointer key, value;
+  g_hash_table_iter_init (&iter, self->entries);
+
+  while (g_hash_table_iter_next (&iter, &key, &value))
+    {
+      const gchar *entry_id = key;
+      MwsScheduleEntry *entry = value;
+      EntryData *data = g_hash_table_lookup (self->entries_data, entry_id);
+      g_assert (data != NULL);
+
+      /* Accounting for the signal emission at the end of the function. */
+      if (data->is_active && !active)
+        g_ptr_array_add (entries_were_active, entry);
+      else if (!data->is_active && active)
+        g_ptr_array_add (entries_now_active, entry);
+
+      /* Update this entry’s status. */
+      data->is_active = active;
+    }
+
+  /* Signal the changes. */
+  if (entries_now_active->len > 0 || entries_were_active->len > 0)
+    {
+      g_debug ("%s: Emitting active-entries-changed with %u now active, %u no longer active",
+               G_STRFUNC, entries_now_active->len, entries_were_active->len);
+      g_signal_emit_by_name (G_OBJECT (self), "active-entries-changed",
+                             entries_now_active, entries_were_active);
+    }
 }

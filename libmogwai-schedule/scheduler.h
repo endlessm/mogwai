@@ -66,4 +66,6 @@ GHashTable       *mws_scheduler_get_entries     (MwsScheduler      *self);
 gboolean          mws_scheduler_is_entry_active (MwsScheduler      *self,
                                                  MwsScheduleEntry  *entry);
 
+void              mws_scheduler_reschedule      (MwsScheduler *self);
+
 G_END_DECLS
