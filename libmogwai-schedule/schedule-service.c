@@ -418,7 +418,6 @@ entries_changed_cb (MwsScheduler *scheduler,
                     gpointer      user_data)
 {
   MwsScheduleService *self = MWS_SCHEDULE_SERVICE (user_data);
-  g_autoptr (GError) error = NULL;
 
   /* Update signal subscriptions for the added and removed entries. */
   for (gsize i = 0; removed != NULL && i < removed->len; i++)
