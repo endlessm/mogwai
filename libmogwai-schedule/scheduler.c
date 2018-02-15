@@ -396,6 +396,9 @@ mws_scheduler_get_entries (MwsScheduler *self)
  * Checks whether the given entry is currently allowed to be downloaded. This
  * only checks cached state: it does not recalculate the scheduler state.
  *
+ * It is an error to call this on an @entry which is not currently in the
+ * scheduler.
+ *
  * Returns: %TRUE if entry can be downloaded now, %FALSE otherwise
  * Since: 0.1.0
  */
