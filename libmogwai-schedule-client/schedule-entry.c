@@ -658,7 +658,7 @@ proxy_init_cb (GObject      *obj,
                gpointer      user_data)
 {
   g_autoptr(GTask) task = G_TASK (user_data);
-  MwscScheduleEntry *self = g_task_get_task_data (task);
+  MwscScheduleEntry *self = g_task_get_source_object (task);
   g_autoptr(GError) error = NULL;
 
   /* Get the proxy. */
@@ -718,7 +718,6 @@ mwsc_schedule_entry_init_async (GAsyncInitable      *initable,
 
   g_autoptr(GTask) task = g_task_new (initable, cancellable, callback, user_data);
   g_task_set_source_tag (task, mwsc_schedule_entry_init_async);
-  g_task_set_task_data (task, g_object_ref (initable), g_object_unref);
 
   if (self->init_error != NULL)
     g_task_return_error (task, g_error_copy (self->init_error));
