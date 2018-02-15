@@ -442,10 +442,9 @@ entry_notify_cb (GObject    *obj,
 {
   MwsScheduleService *self = MWS_SCHEDULE_SERVICE (user_data);
   MwsScheduleEntry *entry = MWS_SCHEDULE_ENTRY (obj);
-  g_autoptr (GError) error = NULL;
+  g_autoptr (GError) local_error = NULL;
 
-  /* Propagate the signal as a D-Bus signal. Expect no errors, since the
-   * documentation says this can only fail if the GVariant type is wrong. */
+  /* Propagate the signal as a D-Bus signal. */
   const gchar *property_name = g_param_spec_get_name (pspec);
   g_auto(GVariantDict) changed_properties_dict = G_VARIANT_DICT_INIT (NULL);
 
@@ -473,8 +472,10 @@ entry_notify_cb (GObject    *obj,
                                  "org.freedesktop.DBus.Properties",
                                  "PropertiesChanged",
                                  parameters,
-                                 &error);
-  g_assert_no_error (error);
+                                 &local_error);
+  if (local_error != NULL)
+    g_debug ("Error emitting PropertiesChanged signal: %s",
+             local_error->message);
 }
 
 /**
