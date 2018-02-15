@@ -84,7 +84,7 @@ mws_scheduler_class_init (MwsSchedulerClass *klass)
   object_class->set_property = mws_scheduler_set_property;
 
   /**
-   * MwsScheduler:entries: (type GPtrArray(MwsScheduleEntry)) (transfer none)
+   * MwsScheduler:entries: (type GHashTable(utf8,MwsScheduleEntry)) (transfer none)
    *
    * Set of schedule entries known to the scheduler, which might be empty. It is
    * a mapping from entry ID to #MwsScheduleEntry instance. Use
