@@ -328,13 +328,13 @@ mws_schedule_entry_new_from_variant (const gchar  *owner,
           GValue value = G_VALUE_INIT;
           g_dbus_gvariant_to_gvalue (variant, &value);
 
-          g_ptr_array_add (names, key);
+          g_ptr_array_add (names, (gpointer) key);
           g_array_append_val (values, value);
         }
     }
 
   /* Always add the owner. */
-  g_ptr_array_add (names, "owner");
+  g_ptr_array_add (names, (gpointer) "owner");
   GValue value = G_VALUE_INIT;
   g_value_init (&value, G_TYPE_STRING);
   g_value_set_string (&value, owner);

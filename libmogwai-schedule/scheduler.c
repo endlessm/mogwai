@@ -352,9 +352,11 @@ mws_scheduler_update_entries (MwsScheduler  *self,
 
       g_debug ("Adding schedule entry ‘%s’.", entry_id);
 
-      if (g_hash_table_replace (self->entries, entry_id, g_object_ref (entry)))
+      if (g_hash_table_replace (self->entries,
+                                (gpointer) entry_id, g_object_ref (entry)))
         {
-          g_hash_table_replace (self->entries_data, entry_id, entry_data_new ());
+          g_hash_table_replace (self->entries_data,
+                                (gpointer) entry_id, entry_data_new ());
           g_ptr_array_add (actually_added, g_object_ref (entry));
         }
       else
@@ -412,7 +414,8 @@ mws_scheduler_remove_entries_for_owner (MwsScheduler  *self,
       MwsScheduleEntry *entry = MWS_SCHEDULE_ENTRY (value);
 
       if (g_str_equal (mws_schedule_entry_get_owner (entry), owner))
-        g_ptr_array_add (entries_to_remove, mws_schedule_entry_get_id (entry));
+        g_ptr_array_add (entries_to_remove,
+                         (gpointer) mws_schedule_entry_get_id (entry));
     }
 
   return mws_scheduler_update_entries (self, NULL, entries_to_remove, error);
