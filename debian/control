@@ -7,6 +7,7 @@ Build-Depends:
  debhelper (>= 10),
  dh-systemd,
  libglib2.0-dev (>= 2.54.0),
+ libnm-dev (>= 1.8.0),
  libsoup2.4-dev (>= 2.42.0),
  libsystemd-dev,
  meson,
