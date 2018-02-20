@@ -60,6 +60,7 @@ entry_data_free (EntryData *data)
   g_free (data);
 }
 
+static void mws_scheduler_constructed  (GObject      *object);
 static void mws_scheduler_dispose      (GObject      *object);
 
 static void mws_scheduler_get_property (GObject      *object,
@@ -70,6 +71,14 @@ static void mws_scheduler_set_property (GObject      *object,
                                         guint         property_id,
                                         const GValue *value,
                                         GParamSpec   *pspec);
+
+static void connection_monitor_connections_changed_cb        (MwsConnectionMonitor *connection_monitor,
+                                                              GPtrArray            *added,
+                                                              GPtrArray            *removed,
+                                                              gpointer              user_data);
+static void connection_monitor_connection_details_changed_cb (MwsConnectionMonitor *connection_monitor,
+                                                              const gchar          *connection_id,
+                                                              gpointer              user_data);
 
 /**
  * MwsScheduler:
@@ -83,6 +92,9 @@ static void mws_scheduler_set_property (GObject      *object,
 struct _MwsScheduler
 {
   GObject parent;
+
+  /* Scheduling data sources. */
+  MwsConnectionMonitor *connection_monitor;  /* (owned) */
 
   /* Mapping from entry ID to (not nullable) entry. */
   GHashTable *entries;  /* (owned) (element-type utf8 MwsScheduleEntry) */
@@ -101,6 +113,7 @@ typedef enum
 {
   PROP_ENTRIES = 1,
   PROP_MAX_ENTRIES,
+  PROP_CONNECTION_MONITOR,
 } MwsSchedulerProperty;
 
 G_DEFINE_TYPE (MwsScheduler, mws_scheduler, G_TYPE_OBJECT)
@@ -109,8 +122,9 @@ static void
 mws_scheduler_class_init (MwsSchedulerClass *klass)
 {
   GObjectClass *object_class = (GObjectClass *) klass;
-  GParamSpec *props[PROP_MAX_ENTRIES + 1] = { NULL, };
+  GParamSpec *props[PROP_CONNECTION_MONITOR + 1] = { NULL, };
 
+  object_class->constructed = mws_scheduler_constructed;
   object_class->dispose = mws_scheduler_dispose;
   object_class->get_property = mws_scheduler_get_property;
   object_class->set_property = mws_scheduler_set_property;
@@ -146,6 +160,23 @@ mws_scheduler_class_init (MwsSchedulerClass *klass)
                          "Maximum number of schedule entries present in the scheduler.",
                          0, G_MAXUINT, DEFAULT_MAX_ENTRIES,
                          G_PARAM_READABLE | G_PARAM_STATIC_STRINGS);
+
+  /**
+   * MwsScheduler:connection-monitor:
+   *
+   * A #MwsConnectionMonitor instance to provide information about the currently
+   * active network connections which is relevant to scheduling downloads, such
+   * as whether they are currently metered, how much of their capacity has been
+   * used in the current time period, or any user-provided policies for them.
+   *
+   * Since: 0.1.0
+   */
+  props[PROP_CONNECTION_MONITOR] =
+      g_param_spec_object ("connection-monitor", "Connection Monitor",
+                           "A #MwsConnectionMonitor instance to provide "
+                           "information about the currently active network connections.",
+                           MWS_TYPE_CONNECTION_MONITOR,
+                           G_PARAM_READWRITE | G_PARAM_CONSTRUCT_ONLY | G_PARAM_STATIC_STRINGS);
 
   g_object_class_install_properties (object_class, G_N_ELEMENTS (props), props);
 
@@ -203,12 +234,42 @@ mws_scheduler_init (MwsScheduler *self)
 }
 
 static void
+mws_scheduler_constructed (GObject *object)
+{
+  MwsScheduler *self = MWS_SCHEDULER (object);
+
+  G_OBJECT_CLASS (mws_scheduler_parent_class)->constructed (object);
+
+  /* Check we have our construction properties. */
+  g_assert (MWS_IS_CONNECTION_MONITOR (self->connection_monitor));
+
+  /* Connect to signals from the connection monitor, which will trigger
+   * rescheduling. */
+  g_signal_connect (self->connection_monitor, "connections-changed",
+                    (GCallback) connection_monitor_connections_changed_cb, self);
+  g_signal_connect (self->connection_monitor, "connection-details-changed",
+                    (GCallback) connection_monitor_connection_details_changed_cb, self);
+}
+
+static void
 mws_scheduler_dispose (GObject *object)
 {
   MwsScheduler *self = MWS_SCHEDULER (object);
 
   g_clear_pointer (&self->entries, g_hash_table_unref);
   g_clear_pointer (&self->entries_data, g_hash_table_unref);
+
+  if (self->connection_monitor != NULL)
+    {
+      g_signal_handlers_disconnect_by_func (self->connection_monitor,
+                                            connection_monitor_connections_changed_cb,
+                                            self);
+      g_signal_handlers_disconnect_by_func (self->connection_monitor,
+                                            connection_monitor_connection_details_changed_cb,
+                                            self);
+    }
+
+  g_clear_object (&self->connection_monitor);
 
   /* Chain up to the parent class */
   G_OBJECT_CLASS (mws_scheduler_parent_class)->dispose (object);
@@ -229,6 +290,9 @@ mws_scheduler_get_property (GObject    *object,
       break;
     case PROP_MAX_ENTRIES:
       g_value_set_uint (value, self->max_entries);
+      break;
+    case PROP_CONNECTION_MONITOR:
+      g_value_set_object (value, self->connection_monitor);
       break;
     default:
       g_assert_not_reached ();
@@ -254,13 +318,45 @@ mws_scheduler_set_property (GObject      *object,
       g_assert (self->max_entries == 0);
       self->max_entries = g_value_get_uint (value);
       break;
+    case PROP_CONNECTION_MONITOR:
+      /* Construct only. */
+      g_assert (self->connection_monitor == NULL);
+      self->connection_monitor = g_value_dup_object (value);
+      break;
     default:
       g_assert_not_reached ();
     }
 }
 
+static void
+connection_monitor_connections_changed_cb (MwsConnectionMonitor *connection_monitor,
+                                           GPtrArray            *added,
+                                           GPtrArray            *removed,
+                                           gpointer              user_data)
+{
+  MwsScheduler *self = MWS_SCHEDULER (user_data);
+
+  g_debug ("%s: Connections changed (%u added, %u removed)",
+           G_STRFUNC, (added != NULL) ? added->len : 0,
+           (removed != NULL) ? removed->len : 0);
+  mws_scheduler_reschedule (self);
+}
+
+static void
+connection_monitor_connection_details_changed_cb (MwsConnectionMonitor *connection_monitor,
+                                                  const gchar          *connection_id,
+                                                  gpointer              user_data)
+{
+  MwsScheduler *self = MWS_SCHEDULER (user_data);
+
+  g_debug ("%s: Connection ‘%s’ changed details", G_STRFUNC, connection_id);
+  mws_scheduler_reschedule (self);
+}
+
 /**
  * mws_scheduler_new:
+ * @connection_monitor: (transfer none): a #MwsConnectionMonitor to provide
+ *    information about network connections to the scheduler
  *
  * Create a new #MwsScheduler instance, with no schedule entries to begin
  * with.
@@ -269,9 +365,13 @@ mws_scheduler_set_property (GObject      *object,
  * Since: 0.1.0
  */
 MwsScheduler *
-mws_scheduler_new (void)
+mws_scheduler_new (MwsConnectionMonitor *connection_monitor)
 {
-  return g_object_new (MWS_TYPE_SCHEDULER, NULL);
+  g_return_val_if_fail (MWS_IS_CONNECTION_MONITOR (connection_monitor), NULL);
+
+  return g_object_new (MWS_TYPE_SCHEDULER,
+                       "connection-monitor", connection_monitor,
+                       NULL);
 }
 
 /**
@@ -525,13 +625,32 @@ mws_scheduler_reschedule (MwsScheduler *self)
   if (g_hash_table_size (self->entries) == 0)
     return;
 
-  /* Can we schedule everything for download? */
-  /* FIXME: Abstract the network monitor to query NetworkManager directly. */
-  GNetworkMonitor *monitor = g_network_monitor_get_default ();
-  gboolean active = !g_network_monitor_get_network_metered (monitor);
+  /* Preload information from the connection monitor. */
+  const gchar * const *all_connection_ids = NULL;
+  all_connection_ids = mws_connection_monitor_get_connection_ids (self->connection_monitor);
+  gsize n_connections = g_strv_length ((gchar **) all_connection_ids);
 
-  g_debug ("%s: Active: %d (using network monitor: %s)",
-           G_STRFUNC, active, g_type_name (G_OBJECT_TYPE (monitor)));
+  g_autoptr(GArray) all_connection_details = g_array_sized_new (FALSE, FALSE,
+                                                                sizeof (MwsConnectionDetails),
+                                                                n_connections);
+  g_array_set_size (all_connection_details, n_connections);
+
+  for (gsize i = 0; all_connection_ids[i] != NULL; i++)
+    {
+      MwsConnectionDetails *out_details = &g_array_index (all_connection_details,
+                                                          MwsConnectionDetails, i);
+
+      if (!mws_connection_monitor_get_connection_details (self->connection_monitor,
+                                                          all_connection_ids[i],
+                                                          out_details))
+        {
+          /* Fill the details with dummy values. */
+          g_debug ("%s: Failed to get details for connection ‘%s’.",
+                   G_STRFUNC, all_connection_ids[i]);
+          out_details->metered = MWS_METERED_UNKNOWN;
+          continue;
+        }
+    }
 
   /* For each entry, see if it’s permissible to start downloading it. For the
    * moment, we only use whether the network is metered as a basis for this
@@ -539,6 +658,8 @@ mws_scheduler_reschedule (MwsScheduler *self)
    * bandwidth usage, capacity limits, etc. */
   g_autoptr(GPtrArray) entries_now_active = g_ptr_array_new_with_free_func (NULL);
   g_autoptr(GPtrArray) entries_were_active = g_ptr_array_new_with_free_func (NULL);
+
+  g_autoptr(GPtrArray) safe_connections = g_ptr_array_new_full (n_connections, NULL);
 
   GHashTableIter iter;
   gpointer key, value;
@@ -550,6 +671,44 @@ mws_scheduler_reschedule (MwsScheduler *self)
       MwsScheduleEntry *entry = value;
       EntryData *data = g_hash_table_lookup (self->entries_data, entry_id);
       g_assert (data != NULL);
+
+      g_debug ("%s: Scheduling entry ‘%s’", G_STRFUNC, entry_id);
+
+      /* Work out which connections this entry could be downloaded on safely. */
+      g_ptr_array_set_size (safe_connections, 0);
+
+      for (gsize i = 0; all_connection_ids[i] != NULL; i++)
+        {
+          /* FIXME: Support multi-path properly by allowing each
+           * #MwsScheduleEntry to specify which connections it might download
+           * over. Currently we assume the client might download over any
+           * active connection. (Typically only one connection will ever be
+           * active anyway.) */
+          const MwsConnectionDetails *details = &g_array_index (all_connection_details,
+                                                                MwsConnectionDetails, i);
+
+          /* FIXME: Allow the connection’s settings to specify the policy for
+           * whether to download when it’s metered. */
+          gboolean is_safe = (details->metered == MWS_METERED_NO);
+          g_debug ("%s: Connection ‘%s’ is %s to download entry ‘%s’ on.",
+                   G_STRFUNC, all_connection_ids[i],
+                   is_safe ? "safe" : "not safe", entry_id);
+
+          if (is_safe)
+            g_ptr_array_add (safe_connections, (gpointer) all_connection_ids[i]);
+        }
+
+      /* If all the active connections are safe for this entry, it can be made
+       * active. We assume that the client cannot support downloading over a
+       * particular connection and ignoring another: all active connections have
+       * to be safe to start a download.
+       * FIXME: Allow clients to specify whether they support downloading from
+       * selective connections. If so, their downloads could be made active
+       * without all active connections having to be safe. */
+      gboolean active = (safe_connections->len == n_connections);
+      g_debug ("%s: Entry ‘%s’ is %s (%u of %" G_GSIZE_FORMAT " connections are safe)",
+               G_STRFUNC, entry_id, active ? "active" : "not active",
+               safe_connections->len, n_connections);
 
       /* Accounting for the signal emission at the end of the function. */
       if (data->is_active && !active)
