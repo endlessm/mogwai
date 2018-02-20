@@ -424,7 +424,7 @@ entries_changed_cb (MwsScheduler *scheduler,
     {
       MwsScheduleEntry *entry = MWS_SCHEDULE_ENTRY (removed->pdata[i]);
 
-      g_debug ("Removing entry ‘%s’.", mws_schedule_entry_get_id (entry));
+      g_message ("Removing schedule entry ‘%s’.", mws_schedule_entry_get_id (entry));
 
       g_signal_handlers_disconnect_by_data (entry, self);
     }
@@ -433,7 +433,7 @@ entries_changed_cb (MwsScheduler *scheduler,
     {
       MwsScheduleEntry *entry = MWS_SCHEDULE_ENTRY (added->pdata[i]);
 
-      g_debug ("Adding entry ‘%s’.", mws_schedule_entry_get_id (entry));
+      g_message ("Adding schedule entry ‘%s’.", mws_schedule_entry_get_id (entry));
 
       g_signal_connect (entry, "notify",
                         (GCallback) entry_notify_cb, self);
@@ -461,9 +461,9 @@ emit_download_now_changed (MwsScheduleService *self,
       MwsScheduleEntry *entry = MWS_SCHEDULE_ENTRY (entries->pdata[i]);
       g_autoptr(GError) local_error = NULL;
 
-      g_debug ("Notifying entry ‘%s’ as %s.",
-               mws_schedule_entry_get_id (entry),
-               download_now ? "active" : "inactive");
+      g_message ("Notifying entry ‘%s’ as %s.",
+                 mws_schedule_entry_get_id (entry),
+                 download_now ? "active" : "inactive");
 
       g_autofree gchar *entry_path = schedule_entry_to_object_path (self, entry);
 
