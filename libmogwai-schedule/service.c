@@ -27,6 +27,7 @@
 #include <glib-unix.h>
 #include <glib/gi18n-lib.h>
 #include <gio/gio.h>
+#include <libmogwai-schedule/connection-monitor-nm.h>
 #include <libmogwai-schedule/schedule-service.h>
 #include <libmogwai-schedule/scheduler.h>
 #include <libmogwai-schedule/service.h>
@@ -100,21 +101,44 @@ mws_service_dispose (GObject *object)
   G_OBJECT_CLASS (mws_service_parent_class)->dispose (object);
 }
 
+static void connection_monitor_new_cb (GObject      *source_object,
+                                       GAsyncResult *result,
+                                       gpointer      user_data);
+
 static void
 mws_service_startup_async (HlpService          *service,
                            GCancellable        *cancellable,
                            GAsyncReadyCallback  callback,
                            gpointer             user_data)
 {
-  MwsService *self = MWS_SERVICE (service);
-  g_autoptr(GError) local_error = NULL;
-
   g_autoptr (GTask) task = g_task_new (service, cancellable, callback, user_data);
   g_task_set_source_tag (task, mws_service_startup_async);
 
-  GDBusConnection *connection = hlp_service_get_dbus_connection (service);
+  /* Get a connection monitor first. */
+  mws_connection_monitor_nm_new_async (cancellable, connection_monitor_new_cb,
+                                       g_steal_pointer (&task));
+}
 
-  self->scheduler = mws_scheduler_new ();
+static void
+connection_monitor_new_cb (GObject      *source_object,
+                           GAsyncResult *result,
+                           gpointer      user_data)
+{
+  g_autoptr(GTask) task = G_TASK (user_data);
+  MwsService *self = MWS_SERVICE (g_task_get_source_object (task));
+  g_autoptr(GError) local_error = NULL;
+
+  g_autoptr(MwsConnectionMonitor) connection_monitor = NULL;
+  connection_monitor = MWS_CONNECTION_MONITOR (mws_connection_monitor_nm_new_finish (result, &local_error));
+  if (local_error != NULL)
+    {
+      g_task_return_error (task, g_steal_pointer (&local_error));
+      return;
+    }
+
+  GDBusConnection *connection = hlp_service_get_dbus_connection (HLP_SERVICE (self));
+
+  self->scheduler = mws_scheduler_new (connection_monitor);
   self->schedule_service = mws_schedule_service_new (connection,
                                                      "/com/endlessm/DownloadManager1",
                                                      self->scheduler);

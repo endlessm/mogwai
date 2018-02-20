@@ -24,6 +24,7 @@
 
 #include <glib.h>
 #include <glib-object.h>
+#include <libmogwai-schedule/connection-monitor.h>
 #include <libmogwai-schedule/schedule-entry.h>
 
 G_BEGIN_DECLS
@@ -49,7 +50,7 @@ GQuark mws_scheduler_error_quark (void);
 #define MWS_TYPE_SCHEDULER mws_scheduler_get_type ()
 G_DECLARE_FINAL_TYPE (MwsScheduler, mws_scheduler, MWS, SCHEDULER, GObject)
 
-MwsScheduler     *mws_scheduler_new             (void);
+MwsScheduler     *mws_scheduler_new             (MwsConnectionMonitor *connection_monitor);
 
 gboolean          mws_scheduler_update_entries  (MwsScheduler      *self,
                                                  GPtrArray         *added,

@@ -19,7 +19,7 @@ executable('mogwai-scheduled' + mogwai_scheduled_api_version,
   install_dir: get_option('libexecdir'),
 )
 
-# systemd and D-Bus files
+# systemd, polkit and D-Bus files
 config = configuration_data()
 config.set('DAEMON_USER', get_option('scheduler_daemon_user'))
 config.set('libexecdir', join_paths(get_option('prefix'), get_option('libexecdir')))
@@ -46,6 +46,12 @@ configure_file(
   input: 'mogwai-scheduled.service.in',
   output: 'mogwai-scheduled.service',
   install_dir: dependency('systemd').get_pkgconfig_variable('systemdsystemunitdir'),
+  configuration: config,
+)
+configure_file(
+  input: 'com.endlessm.MogwaiSchedule1.rules.in',
+  output: 'com.endlessm.MogwaiSchedule1.rules',
+  install_dir: join_paths(get_option('datadir'), 'polkit-1', 'rules.d'),
   configuration: config,
 )
 
