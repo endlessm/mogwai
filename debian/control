@@ -28,6 +28,7 @@ Section: misc
 Architecture: any
 Multi-arch: same
 Depends:
+ mogwai-scheduled,
  ${misc:Depends},
  ${shlibs:Depends},
 Description: Download Scheduler Tools
