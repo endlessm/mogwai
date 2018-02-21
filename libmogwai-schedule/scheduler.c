@@ -102,7 +102,7 @@ struct _MwsScheduler
 
   /* Mapping from entry ID to (not nullable) entry data. We can’t use the same
    * hash table as @entries since we need to be able to return that one in
-   * mws_scheduler_get_entries(). */
+   * mws_scheduler_get_entries(). Always has the same set of keys as @entries. */
   GHashTable *entries_data;  /* (owned) (element-type utf8 EntryData) */
 };
 
@@ -420,6 +420,9 @@ mws_scheduler_update_entries (MwsScheduler  *self,
       return FALSE;
     }
 
+  /* Remove and add entries. Throughout, we need to ensure that @entries and
+   * @entries_data always have identical sets of keys; that reduces the number
+   * of checks needed in other places in the code. */
   for (gsize i = 0; removed != NULL && i < removed->len; i++)
     {
       const gchar *entry_id = removed->pdata[i];
