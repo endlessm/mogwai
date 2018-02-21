@@ -34,7 +34,7 @@
  * @a: a metered status
  * @b: another metered status
  *
- * Combine two #MwsMetered values pessimistically, returning the one of them
+ * Combine two #MwsMetered values pessimistically, returning the one
  * which more conservatively estimates the metered status of a connection. For
  * example, if the two values were %MWS_METERED_GUESS_NO and
  * %MWS_METERED_GUESS_YES, the returned value would be %MWS_METERED_GUESS_YES.
