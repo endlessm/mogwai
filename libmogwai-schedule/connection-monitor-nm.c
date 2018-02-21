@@ -164,7 +164,7 @@ mws_connection_monitor_nm_class_init (MwsConnectionMonitorNmClass *klass)
    */
   props[PROP_CLIENT] =
       g_param_spec_object ("client", "Client",
-                           "Proxyt to the NetworkManager client interface on D-Bus.",
+                           "Proxy to the NetworkManager client interface on D-Bus.",
                            NM_TYPE_CLIENT,
                            G_PARAM_READWRITE | G_PARAM_CONSTRUCT_ONLY | G_PARAM_STATIC_STRINGS);
 
@@ -769,7 +769,7 @@ device_get_applied_connection_cb (GObject      *obj,
            G_STRFUNC, nm_device_get_iface (device));
 
   /* We could be cancelled as part of disposing the #MwsConnectionMonitorNm, so
-   * handle that carefully. */
+   * handle that carefully (@self would be invalid in this case). */
   g_autoptr(NMConnection) connection = NULL;
   connection = nm_device_get_applied_connection_finish (device, result, NULL, &local_error);
 
