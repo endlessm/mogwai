@@ -769,7 +769,7 @@ device_get_applied_connection_cb (GObject      *obj,
            G_STRFUNC, nm_device_get_iface (device));
 
   /* We could be cancelled as part of disposing the #MwsConnectionMonitorNm, so
-   * handle that carefully (@self would be invalid in this case). */
+   * handle that carefully (@self would be in its dispose() in this case). */
   g_autoptr(NMConnection) connection = NULL;
   connection = nm_device_get_applied_connection_finish (device, result, NULL, &local_error);
 
