@@ -45,8 +45,6 @@ static void mws_connection_monitor_nm_set_property (GObject      *object,
                                                     const GValue *value,
                                                     GParamSpec   *pspec);
 
-static void active_connection_disconnect_and_unref (gpointer data);
-
 static void active_connection_added_cb           (NMClient           *client,
                                                   NMActiveConnection *active_connection,
                                                   gpointer            user_data);
@@ -116,12 +114,9 @@ struct _MwsConnectionMonitorNm
   /* Allow cancelling any pending operations during dispose. */
   GCancellable *cancellable;  /* (owned) */
 
-  /* Track connections in NM. This maps connection ID → connection object. */
-  GHashTable *active_connections;  /* (owned) (element-type utf8 NMActiveConnection) */
-
-  /* This cache should be invalidated whenever @connections is changed.
-   * We only own the array, not its contents. */
-  const gchar **cached_connection_ids;  /* (owned) (array zero-terminated=1) */
+  /* This cache should be invalidated whenever
+   * nm_client_get_active_connections() is changed. */
+  gchar **cached_connection_ids;  /* (owned) (array zero-terminated=1) */
 };
 
 typedef enum
@@ -189,9 +184,6 @@ static void
 mws_connection_monitor_nm_init (MwsConnectionMonitorNm *self)
 {
   self->cancellable = g_cancellable_new ();
-  self->active_connections = g_hash_table_new_full (g_str_hash, g_str_equal,
-                                                    g_free,
-                                                    active_connection_disconnect_and_unref);
   self->cached_connection_ids = NULL;
 }
 
@@ -210,14 +202,10 @@ active_connection_connect (MwsConnectionMonitorNm *self,
 }
 
 static void
-active_connection_disconnect_and_unref (gpointer data)
+active_connection_disconnect (NMActiveConnection *active_connection)
 {
-  NMActiveConnection *active_connection = NM_ACTIVE_CONNECTION (data);
-
   NMConnection *connection = NM_CONNECTION (nm_active_connection_get_connection (active_connection));
   connection_disconnect (connection);
-
-  g_object_unref (active_connection);
 }
 
 static void
@@ -315,13 +303,18 @@ mws_connection_monitor_nm_dispose (GObject *object)
       device_removed_cb (self->client, device, self);
     }
 
+  /* Disconnect from all remaining active connections. */
+  const GPtrArray *active_connections = nm_client_get_active_connections (self->client);
+  for (gsize i = 0; i < active_connections->len; i++)
+    {
+      NMActiveConnection *active_connection = g_ptr_array_index (active_connections, i);
+      active_connection_removed_cb (self->client, active_connection, self);
+    }
+
   g_clear_object (&self->client);
   g_clear_error (&self->init_error);
 
-  if (self->active_connections != NULL)
-    g_hash_table_remove_all (self->active_connections);
-  g_clear_pointer (&self->active_connections, (GDestroyNotify) g_hash_table_unref);
-  g_clear_pointer (&self->cached_connection_ids, g_free);  /* we only own the container */
+  g_clear_pointer (&self->cached_connection_ids, g_strfreev);
 
   /* Chain up to the parent class */
   G_OBJECT_CLASS (mws_connection_monitor_nm_parent_class)->dispose (object);
@@ -497,14 +490,24 @@ mws_connection_monitor_nm_get_connection_ids (MwsConnectionMonitor *monitor)
 {
   MwsConnectionMonitorNm *self = MWS_CONNECTION_MONITOR_NM (monitor);
 
+  const GPtrArray *active_connections = nm_client_get_active_connections (self->client);
+
   if (self->cached_connection_ids == NULL)
-    self->cached_connection_ids = (const gchar **) g_hash_table_get_keys_as_array (self->active_connections, NULL);
+    {
+      g_autoptr(GPtrArray) connection_ids = g_ptr_array_new_full (active_connections->len, g_free);
+      for (gsize i = 0; i < active_connections->len; i++)
+        {
+          NMActiveConnection *active_connection = NM_ACTIVE_CONNECTION (g_ptr_array_index (active_connections, i));
+          g_ptr_array_add (connection_ids, g_strdup (nm_active_connection_get_id (active_connection)));
+        }
+      g_ptr_array_add (connection_ids, NULL);  /* NULL terminator */
+      self->cached_connection_ids = (gchar **) g_ptr_array_free (g_steal_pointer (&connection_ids), FALSE);
+    }
 
   /* Sanity check. */
-  g_assert (g_strv_length ((gchar **) self->cached_connection_ids) ==
-            g_hash_table_size (self->active_connections));
+  g_warn_if_fail (g_strv_length ((gchar **) self->cached_connection_ids) == active_connections->len);
 
-  return self->cached_connection_ids;
+  return (const gchar * const *) self->cached_connection_ids;
 }
 
 /* Convert a #NMMetered to a #MwsMetered. */
@@ -536,7 +539,18 @@ mws_connection_monitor_nm_get_connection_details (MwsConnectionMonitor *monitor,
   MwsConnectionMonitorNm *self = MWS_CONNECTION_MONITOR_NM (monitor);
 
   /* Does the connection with @id exist? */
-  NMActiveConnection *active_connection = g_hash_table_lookup (self->active_connections, id);
+  const GPtrArray *active_connections = nm_client_get_active_connections (self->client);
+  NMActiveConnection *active_connection = NULL;
+  for (gsize i = 0; i < active_connections->len; i++)
+    {
+      NMActiveConnection *c = NM_ACTIVE_CONNECTION (g_ptr_array_index (active_connections, i));
+      if (g_str_equal (nm_active_connection_get_id (c), id))
+        {
+          active_connection = c;
+          break;
+        }
+    }
+
   if (active_connection == NULL)
     return FALSE;
 
@@ -587,33 +601,19 @@ active_connection_added_cb (NMClient           *client,
 
   /* Add to the connection IDs list and emit a signal. */
   const gchar *id = nm_active_connection_get_id (active_connection);
-  gboolean changed = g_hash_table_replace (self->active_connections,
-                                           g_strdup (id),
-                                           g_object_ref (active_connection));
 
-  if (changed)
-    {
-      g_debug ("%s: Adding active connection ‘%s’.", G_STRFUNC, id);
+  g_debug ("%s: Adding active connection ‘%s’.", G_STRFUNC, id);
 
-      g_clear_pointer (&self->cached_connection_ids, g_free);
+  g_clear_pointer (&self->cached_connection_ids, g_strfreev);
+  active_connection_connect (self, active_connection);
 
-      /* Monitor the set of #NMDevices exposed by this active connection, so we
-       * can see when the devices’ settings change. */
-      active_connection_connect (self, active_connection);
-
-      /* FIXME: In the future, we may want to handle the primary connection
-       * (nm_client_get_primary_connection()) differently from other
-       * connections. Probably best to tie that in with the rest of the
-       * multi-path stuff. */
-      g_autoptr(GPtrArray) added = g_ptr_array_new_with_free_func (NULL);
-      g_ptr_array_add (added, (gpointer) id);
-      g_signal_emit_by_name (self, "connections-changed", added, NULL);
-    }
-  else
-    {
-      /* Say the connection’s details have changed, just in case. */
-      g_signal_emit_by_name (self, "connection-details-changed", id);
-    }
+  /* FIXME: In the future, we may want to handle the primary connection
+   * (nm_client_get_primary_connection()) differently from other
+   * connections. Probably best to tie that in with the rest of the
+   * multi-path stuff. */
+  g_autoptr(GPtrArray) added = g_ptr_array_new_with_free_func (NULL);
+  g_ptr_array_add (added, (gpointer) id);
+  g_signal_emit_by_name (self, "connections-changed", added, NULL);
 }
 
 static void
@@ -625,18 +625,15 @@ active_connection_removed_cb (NMClient           *client,
 
   /* Remove from the connection IDs list and emit a signal. */
   const gchar *id = nm_active_connection_get_id (active_connection);
-  gboolean changed = g_hash_table_remove (self->active_connections, id);
 
-  if (changed)
-    {
-      g_debug ("%s: Removing active connection ‘%s’.", G_STRFUNC, id);
+  g_debug ("%s: Removing active connection ‘%s’.", G_STRFUNC, id);
 
-      g_clear_pointer (&self->cached_connection_ids, g_free);
+  g_clear_pointer (&self->cached_connection_ids, g_strfreev);
+  active_connection_disconnect (active_connection);
 
-      g_autoptr(GPtrArray) removed = g_ptr_array_new_with_free_func (NULL);
-      g_ptr_array_add (removed, (gpointer) id);
-      g_signal_emit_by_name (self, "connections-changed", NULL, removed);
-    }
+  g_autoptr(GPtrArray) removed = g_ptr_array_new_with_free_func (NULL);
+  g_ptr_array_add (removed, (gpointer) id);
+  g_signal_emit_by_name (self, "connections-changed", NULL, removed);
 }
 
 static void
