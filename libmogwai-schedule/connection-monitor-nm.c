@@ -31,9 +31,6 @@
 #include <NetworkManager.h>
 
 
-/* FIXME: Upstream this to NetworkManager. */
-G_DEFINE_AUTOPTR_CLEANUP_FUNC (NMConnection, g_object_unref)
-
 static void mws_connection_monitor_nm_connection_monitor_init (MwsConnectionMonitorInterface *iface);
 static void mws_connection_monitor_nm_initable_init           (GInitableIface                *iface);
 static void mws_connection_monitor_nm_async_initable_init     (GAsyncInitableIface           *iface);
@@ -50,7 +47,6 @@ static void mws_connection_monitor_nm_set_property (GObject      *object,
 
 static void active_connection_disconnect_and_unref (gpointer data);
 static void device_disconnect_and_unref            (gpointer data);
-static void connection_disconnect_and_unref        (gpointer data);
 
 static void active_connection_added_cb           (NMClient           *client,
                                                   NMActiveConnection *active_connection,
@@ -68,9 +64,6 @@ static void device_state_changed_cb              (NMDevice           *device,
                                                   gpointer            user_data);
 static void device_notify_cb                     (GObject            *obj,
                                                   GParamSpec         *pspec,
-                                                  gpointer            user_data);
-static void device_get_applied_connection_cb     (GObject            *obj,
-                                                  GAsyncResult       *result,
                                                   gpointer            user_data);
 static void setting_connection_notify_cb         (GObject            *obj,
                                                   GParamSpec         *pspec,
@@ -123,7 +116,7 @@ struct _MwsConnectionMonitorNm
 
   /* Track connections in NM. This maps connection ID → connection object. */
   GHashTable *active_connections;  /* (owned) (element-type utf8 NMActiveConnection) */
-  GHashTable *device_connections;  /* (owned) (element-type NMDevice NMConnection) */
+  GHashTable *devices;  /* (owned) (element-type NMDevice NMDevice) */
 
   /* This cache should be invalidated whenever @connections is changed.
    * We only own the array, not its contents. */
@@ -198,25 +191,35 @@ mws_connection_monitor_nm_init (MwsConnectionMonitorNm *self)
   self->active_connections = g_hash_table_new_full (g_str_hash, g_str_equal,
                                                     g_free,
                                                     active_connection_disconnect_and_unref);
-  self->device_connections = g_hash_table_new_full (g_direct_hash, g_direct_equal,
-                                                    device_disconnect_and_unref,
-                                                    connection_disconnect_and_unref);
+  self->devices = g_hash_table_new_full (g_direct_hash, g_direct_equal,
+                                         device_disconnect_and_unref, NULL);
   self->cached_connection_ids = NULL;
 }
 
 /* Utilities for connection and disconnecting signals on various objects. */
+static void connection_connect    (MwsConnectionMonitorNm *self,
+                                   NMConnection           *connection,
+                                   NMActiveConnection     *active_connection);
+static void connection_disconnect (NMConnection           *connection);
+
 static void
 active_connection_connect (MwsConnectionMonitorNm *self,
                            NMActiveConnection     *active_connection)
 {
   g_signal_connect (active_connection, "notify::devices",
                     (GCallback) active_connection_devices_changed_cb, self);
+
+  NMConnection *connection = NM_CONNECTION (nm_active_connection_get_connection (active_connection));
+  connection_connect (self, connection, active_connection);
 }
 
 static void
 active_connection_disconnect_and_unref (gpointer data)
 {
   NMActiveConnection *active_connection = NM_ACTIVE_CONNECTION (data);
+
+  NMConnection *connection = NM_CONNECTION (nm_active_connection_get_connection (active_connection));
+  connection_disconnect (connection);
 
   g_signal_handlers_disconnect_matched (active_connection, G_SIGNAL_MATCH_FUNC,
                                         0  /* signal ID */, 0  /* detail */,
@@ -232,11 +235,11 @@ active_connection_disconnect_all_devices (MwsConnectionMonitorNm *self,
                                           NMActiveConnection     *active_connection)
 {
   GHashTableIter iter;
-  gpointer key, value;
+  gpointer key;
 
-  g_hash_table_iter_init (&iter, self->device_connections);
+  g_hash_table_iter_init (&iter, self->devices);
 
-  while (g_hash_table_iter_next (&iter, &key, &value))
+  while (g_hash_table_iter_next (&iter, &key, NULL))
     {
       NMDevice *device = NM_DEVICE (key);
 
@@ -313,10 +316,8 @@ connection_connect (MwsConnectionMonitorNm *self,
 }
 
 static void
-connection_disconnect_and_unref (gpointer data)
+connection_disconnect (NMConnection *connection)
 {
-  NMConnection *connection = NM_CONNECTION (data);
-
   NMSettingConnection *setting = nm_connection_get_setting_connection (connection);
   if (setting != NULL)
     g_signal_handlers_disconnect_matched (setting,
@@ -325,8 +326,6 @@ connection_disconnect_and_unref (gpointer data)
                                           NULL  /* closure */,
                                           setting_connection_notify_cb,
                                           NULL  /* data */);
-
-  g_object_unref (connection);
 }
 
 static void
@@ -349,9 +348,9 @@ mws_connection_monitor_nm_dispose (GObject *object)
   if (self->active_connections != NULL)
     g_hash_table_remove_all (self->active_connections);
   g_clear_pointer (&self->active_connections, (GDestroyNotify) g_hash_table_unref);
-  if (self->device_connections != NULL)
-    g_hash_table_remove_all (self->device_connections);
-  g_clear_pointer (&self->device_connections, (GDestroyNotify) g_hash_table_unref);
+  if (self->devices != NULL)
+    g_hash_table_remove_all (self->devices);
+  g_clear_pointer (&self->devices, (GDestroyNotify) g_hash_table_unref);
   g_clear_pointer (&self->cached_connection_ids, g_free);  /* we only own the container */
 
   /* Chain up to the parent class */
@@ -565,13 +564,20 @@ mws_connection_monitor_nm_get_connection_details (MwsConnectionMonitor *monitor,
 
   /* To work out whether the active connection is metered, combine the metered
    * status of all the #NMDevices which form it, plus the metered settings of
-   * their corresponding #NMConnections (on the associated #NMSettingConnection
-   * objects, if they exist). We are being conservative here, on the assumption
+   * the active connection’s #NMSettingConnection (if it exists).
+   * We are being conservative here, on the assumption
    * that a client could download using any active network connection, not just
    * the primary one. In most cases, the distinction is immaterial as we’d
    * expect only a single active network connection on most machines. */
-  MwsMetered connections_metered = MWS_METERED_UNKNOWN;
+  MwsMetered connection_metered = MWS_METERED_GUESS_NO;
   MwsMetered devices_metered = MWS_METERED_UNKNOWN;
+
+  NMConnection *connection = NM_CONNECTION (nm_active_connection_get_connection (active_connection));
+  NMSettingConnection *setting = nm_connection_get_setting_connection (connection);
+
+  if (setting != NULL)
+    connection_metered =
+        mws_metered_from_nm_metered (nm_setting_connection_get_metered (setting));
 
   const GPtrArray *devices = nm_active_connection_get_devices (active_connection);
 
@@ -579,32 +585,13 @@ mws_connection_monitor_nm_get_connection_details (MwsConnectionMonitor *monitor,
     {
       NMDevice *device = g_ptr_array_index (devices, i);
 
+      /* Sort out metered status. */
       devices_metered = mws_metered_combine_pessimistic (mws_metered_from_nm_metered (nm_device_get_metered (device)),
                                                          devices_metered);
-
-      MwsMetered connection_metered = MWS_METERED_GUESS_NO;
-      NMConnection *connection = g_hash_table_lookup (self->device_connections, device);
-
-      if (connection != NULL)
-        {
-          NMSettingConnection *setting = nm_connection_get_setting_connection (connection);
-
-          if (setting != NULL)
-            connection_metered =
-                mws_metered_from_nm_metered (nm_setting_connection_get_metered (setting));
-        }
-      else
-        {
-          g_debug ("%s: Connection for device ‘%s’ was not in the cache",
-                   G_STRFUNC, nm_device_get_iface (device));
-        }
-
-      connections_metered = mws_metered_combine_pessimistic (connection_metered,
-                                                             connections_metered);
     }
 
   out_details->metered = mws_metered_combine_pessimistic (devices_metered,
-                                                          connections_metered);
+                                                          connection_metered);
 
   return TRUE;
 }
@@ -697,6 +684,7 @@ active_connection_devices_changed_cb (GObject    *obj,
       NMDevice *device = NM_DEVICE (g_ptr_array_index (devices, i));
 
       device_connect (self, device);
+      g_hash_table_replace (self->devices, g_object_ref (device), device);
       device_notify_cb (G_OBJECT (device), NULL, self);
       device_state_changed_cb (device, NM_DEVICE_STATE_UNKNOWN,
                                nm_device_get_state (device),
@@ -750,58 +738,8 @@ device_state_changed_cb (NMDevice *device,
   if (g_cancellable_is_cancelled (self->cancellable))
     return;
 
-  /* If the device has changed state, it might be as a result of its
-   * configuration (#NMConnection) changing, so re-query for that. */
-  nm_device_get_applied_connection_async (device, 0  /* flags */, self->cancellable,
-                                          device_get_applied_connection_cb, self);
-}
-
-static void
-device_get_applied_connection_cb (GObject      *obj,
-                                  GAsyncResult *result,
-                                  gpointer      user_data)
-{
-  MwsConnectionMonitorNm *self = MWS_CONNECTION_MONITOR_NM (user_data);
-  NMDevice *device = NM_DEVICE (obj);
-  g_autoptr(GError) local_error = NULL;
-
-  g_debug ("%s: Finished getting connection for device ‘%s’.",
-           G_STRFUNC, nm_device_get_iface (device));
-
-  /* We could be cancelled as part of disposing the #MwsConnectionMonitorNm, so
-   * handle that carefully (@self would be in its dispose() in this case). */
-  g_autoptr(NMConnection) connection = NULL;
-  connection = nm_device_get_applied_connection_finish (device, result, NULL, &local_error);
-
-  NMActiveConnection *active_connection = nm_device_get_active_connection (device);
-  if (active_connection == NULL && local_error == NULL)
-    {
-      /* If the device has no active connection, we shouldn’t really be handling
-       * it, since we only care about active connections. Ignore this device. */
-      g_set_error (&local_error, G_IO_ERROR, G_IO_ERROR_FAILED,
-                   "Device ‘%s’ is not part of an active connection",
-                   nm_device_get_iface (device));
-    }
-
-  if (local_error != NULL)
-    {
-      if (!g_error_matches (local_error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
-        g_warning ("Error querying applied connection for device ‘%s’: %s",
-                   nm_device_get_iface (device), local_error->message);
-
-      /* Drop whatever we had in the cache. */
-      g_hash_table_remove (self->device_connections, device);
-      return;
-    }
-
-  g_assert (active_connection != NULL);
-
-  connection_connect (self, connection, active_connection);
-  g_hash_table_replace (self->device_connections, g_object_ref (device),
-                        g_steal_pointer (&connection));
-
-  g_signal_emit_by_name (self, "connection-details-changed",
-                         nm_active_connection_get_id (active_connection));
+  if (active_connection != NULL)
+    g_signal_emit_by_name (self, "connection-details-changed", active_connection_id);
 }
 
 static void
