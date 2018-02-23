@@ -96,6 +96,23 @@ mws_metered_to_string (MwsMetered metered)
 }
 
 /**
+ * mws_connection_details_clear:
+ * @details: (transfer full): a #MwsConnectionDetails
+ *
+ * Free any allocated memory in the given @details instance (but don’t free the
+ * @details itself), and reset the instance to neutral default values.
+ *
+ * This should be used with stack-allocated #MwsConnectionDetails.
+ *
+ * Since: 0.1.0
+ */
+void
+mws_connection_details_clear (MwsConnectionDetails *details)
+{
+  /* Currently nothing to do here. */
+}
+
+/**
  * MwsConnectionMonitor:
  *
  * A connection monitor is an abstraction over the OS’s network interface,
@@ -201,6 +218,10 @@ mws_connection_monitor_get_connection_ids (MwsConnectionMonitor *self)
  * Get the current details of the active connection with the given @id. If
  * @out_details is %NULL, this can be used to check whether a given @id is
  * valid.
+ *
+ * The populated @out_details may contain heap-allocated memory, ownership of
+ * which is transferred to the caller. Call mws_connection_details_clear() to
+ * free it afterwards.
  *
  * Returns: %TRUE if @id is valid and @out_details has been filled (if provided);
  *    %FALSE otherwise

@@ -71,6 +71,8 @@ typedef struct
   MwsMetered metered;
 } MwsConnectionDetails;
 
+void mws_connection_details_clear (MwsConnectionDetails *details);
+
 #define MWS_TYPE_CONNECTION_MONITOR mws_connection_monitor_get_type ()
 G_DECLARE_INTERFACE (MwsConnectionMonitor, mws_connection_monitor, MWS, CONNECTION_MONITOR, GObject)
 

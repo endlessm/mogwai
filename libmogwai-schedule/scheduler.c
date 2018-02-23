@@ -633,6 +633,8 @@ mws_scheduler_reschedule (MwsScheduler *self)
   g_autoptr(GArray) all_connection_details = g_array_sized_new (FALSE, FALSE,
                                                                 sizeof (MwsConnectionDetails),
                                                                 n_connections);
+  g_array_set_clear_func (all_connection_details,
+                          (GDestroyNotify) mws_connection_details_clear);
   g_array_set_size (all_connection_details, n_connections);
 
   for (gsize i = 0; all_connection_ids[i] != NULL; i++)
@@ -647,7 +649,7 @@ mws_scheduler_reschedule (MwsScheduler *self)
           /* Fill the details with dummy values. */
           g_debug ("%s: Failed to get details for connection ‘%s’.",
                    G_STRFUNC, all_connection_ids[i]);
-          out_details->metered = MWS_METERED_UNKNOWN;
+          mws_connection_details_clear (out_details);
           continue;
         }
     }
