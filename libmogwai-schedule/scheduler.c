@@ -689,12 +689,42 @@ mws_scheduler_reschedule (MwsScheduler *self)
           const MwsConnectionDetails *details = &g_array_index (all_connection_details,
                                                                 MwsConnectionDetails, i);
 
-          /* FIXME: Allow the connection’s settings to specify the policy for
-           * whether to download when it’s metered. */
-          gboolean is_safe = (details->metered == MWS_METERED_NO);
-          g_debug ("%s: Connection ‘%s’ is %s to download entry ‘%s’ on.",
+          /* If this connection has a tariff specified, work out whether we’ve
+           * hit any of the limits for the current tariff period.
+           * FIXME: We need to reschedule when the tariff period changes. */
+          MwtPeriod *tariff_period = NULL;
+          gboolean tariff_period_reached_capacity_limit = FALSE;
+
+          if (details->tariff != NULL)
+            {
+              g_autoptr(GDateTime) now = g_date_time_new_now_local ();
+              tariff_period = mwt_tariff_lookup_period (details->tariff, now);
+            }
+
+          if (tariff_period != NULL)
+            {
+              /* FIXME: For the moment, we can only see if the capacity limit is
+               * hard-coded to zero to indicate a period when downloads are
+               * banned. In future, we will need to query the amount of data
+               * downloaded in the current period and check it against the
+               * limit (plus do a reschedule when the amount of data downloaded
+               * does reach the limit). */
+              tariff_period_reached_capacity_limit =
+                  (mwt_period_get_capacity_limit (tariff_period) == 0);
+            }
+
+          /* Is it safe to schedule this entry on this connection now? */
+          gboolean is_safe = ((details->metered == MWS_METERED_NO ||
+                               details->download_when_metered) &&
+                              !tariff_period_reached_capacity_limit);
+          g_debug ("%s: Connection ‘%s’ is %s to download entry ‘%s’ on "
+                   "(metered: %s, download-when-metered: %s, "
+                   "tariff-period-reached-capacity-limit: %s).",
                    G_STRFUNC, all_connection_ids[i],
-                   is_safe ? "safe" : "not safe", entry_id);
+                   is_safe ? "safe" : "not safe", entry_id,
+                   mws_metered_to_string (details->metered),
+                   details->download_when_metered ? "yes" : "no",
+                   tariff_period_reached_capacity_limit ? "yes" : "no");
 
           if (is_safe)
             g_ptr_array_add (safe_connections, (gpointer) all_connection_ids[i]);
