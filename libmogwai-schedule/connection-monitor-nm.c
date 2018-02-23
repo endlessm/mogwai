@@ -28,6 +28,8 @@
 #include <gio/gio.h>
 #include <libmogwai-schedule/connection-monitor.h>
 #include <libmogwai-schedule/connection-monitor-nm.h>
+#include <libmogwai-tariff/tariff-loader.h>
+#include <libmogwai-tariff/tariff.h>
 #include <NetworkManager.h>
 
 
@@ -531,6 +533,29 @@ mws_metered_from_nm_metered (NMMetered m)
     }
 }
 
+/* Get a boolean configuration value from an #NMSettingUser. Valid values are
+ * `0` or `1`. Returns the value; if it wasn’t set in the @setting_user, the
+ * @default_value is returned. There is no way to distinguish an unset value
+ * from a set value equal to the @default_value. */
+static gboolean
+setting_user_get_boolean (NMSettingUser *setting_user,
+                          const gchar   *key,
+                          gboolean       default_value)
+{
+  const gchar *str = nm_setting_user_get_data (setting_user, key);
+  if (str == NULL)
+    return default_value;
+  else if (g_str_equal (str, "0"))
+    return FALSE;
+  else if (g_str_equal (str, "1"))
+    return TRUE;
+  else
+    g_warning ("Invalid value ‘%s’ for user setting ‘%s’; expecting ‘0’ or ‘1’",
+               str, key);
+
+  return default_value;
+}
+
 static gboolean
 mws_connection_monitor_nm_get_connection_details (MwsConnectionMonitor *monitor,
                                                   const gchar          *id,
@@ -586,8 +611,65 @@ mws_connection_monitor_nm_get_connection_details (MwsConnectionMonitor *monitor,
                                                          devices_metered);
     }
 
+  /* Get the connection’s tariff information (if set). These keys/values are
+   * set on the #NMSettingUser for the primary connection by
+   * gnome-control-center, and may be absent. */
+  NMSettingUser *setting_user =
+      NM_SETTING_USER (nm_connection_get_setting (connection, NM_TYPE_SETTING_USER));
+
+  /* TODO: If we want to load a default value from eos-autoupdater.conf (see
+   * https://phabricator.endlessm.com/T20818#542708), we should plumb it in here
+   * (but do the async loading of the file somewhere else, earlier). */
+  const gboolean download_when_metered_default = FALSE;
+
+  gboolean download_when_metered = download_when_metered_default;
+  g_autoptr(MwtTariff) tariff = NULL;
+
+  if (setting_user != NULL)
+    {
+      download_when_metered = setting_user_get_boolean (setting_user,
+                                                        "connection.allow-downloads-when-metered",
+                                                        download_when_metered_default);
+
+      gboolean tariff_enabled = setting_user_get_boolean (setting_user,
+                                                          "connection.tariff-enabled",
+                                                          FALSE);
+      const gchar *tariff_variant_str;
+      tariff_variant_str = nm_setting_user_get_data (setting_user,
+                                                     "connection.tariff");
+
+      if (tariff_enabled && tariff_variant_str != NULL)
+        {
+          g_autoptr(GError) local_error = NULL;
+          g_autoptr(GVariant) tariff_variant = NULL;
+          tariff_variant = g_variant_parse (NULL, tariff_variant_str,
+                                            NULL, NULL, &local_error);
+          g_autoptr(MwtTariffLoader) loader = mwt_tariff_loader_new ();
+
+          if (tariff_variant != NULL &&
+              mwt_tariff_loader_load_from_variant (loader, tariff_variant,
+                                                   &local_error))
+            tariff = g_object_ref (mwt_tariff_loader_get_tariff (loader));
+
+          if (local_error != NULL)
+            {
+              g_assert (tariff == NULL);
+              g_warning ("connection.tariff contained an invalid tariff ‘%s’: %s",
+                         tariff_variant_str, local_error->message);
+              g_clear_error (&local_error);
+            }
+        }
+      else if (tariff_enabled && tariff_variant_str == NULL)
+        {
+          g_warning ("connection.tariff is not set even though "
+                     "connection.tariff-enabled is 1");
+        }
+    }
+
   out_details->metered = mws_metered_combine_pessimistic (devices_metered,
                                                           connection_metered);
+  out_details->download_when_metered = download_when_metered;
+  out_details->tariff = g_steal_pointer (&tariff);
 
   return TRUE;
 }

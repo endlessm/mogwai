@@ -109,7 +109,9 @@ mws_metered_to_string (MwsMetered metered)
 void
 mws_connection_details_clear (MwsConnectionDetails *details)
 {
-  /* Currently nothing to do here. */
+  details->metered = MWS_METERED_UNKNOWN;
+  details->download_when_metered = FALSE;
+  g_clear_object (&details->tariff);
 }
 
 /**
