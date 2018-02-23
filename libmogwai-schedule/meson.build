@@ -24,6 +24,7 @@ libmogwai_schedule_deps = [
   dependency('gobject-2.0', version: '>= 2.54'),
   dependency('libnm', version: '>= 1.8.0'),
   libhelper_dep,
+  libmogwai_tariff_dep,
 ]
 
 libmogwai_schedule = static_library('mogwai-schedule-' + libmogwai_schedule_api_version,

@@ -24,6 +24,7 @@
 
 #include <glib.h>
 #include <glib-object.h>
+#include <libmogwai-tariff/tariff.h>
 
 G_BEGIN_DECLS
 
@@ -60,6 +61,9 @@ const gchar *mws_metered_to_string           (MwsMetered metered);
 /**
  * MwsConnectionDetails:
  * @metered: Whether the connection is metered.
+ * @download_when_metered: %TRUE to download even if the connection is metered,
+ *    %FALSE otherwise
+ * @tariff: (nullable) (owned): Tariff information for this connection.
  *
  * Information about the configuration and current state of a given connection.
  * This struct may be expanded in future to add new fields.
@@ -69,6 +73,8 @@ const gchar *mws_metered_to_string           (MwsMetered metered);
 typedef struct
 {
   MwsMetered metered;
+  gboolean download_when_metered;
+  MwtTariff *tariff;
 } MwsConnectionDetails;
 
 void mws_connection_details_clear (MwsConnectionDetails *details);
