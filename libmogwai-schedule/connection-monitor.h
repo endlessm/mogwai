@@ -53,8 +53,9 @@ typedef enum
   MWS_METERED_GUESS_NO,
 } MwsMetered;
 
-MwsMetered mws_metered_combine_pessimistic (MwsMetered a,
-                                            MwsMetered b);
+MwsMetered   mws_metered_combine_pessimistic (MwsMetered a,
+                                              MwsMetered b);
+const gchar *mws_metered_to_string           (MwsMetered metered);
 
 /**
  * MwsConnectionDetails:

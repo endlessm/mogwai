@@ -66,6 +66,36 @@ mws_metered_combine_pessimistic (MwsMetered a,
 }
 
 /**
+ * mws_metered_to_string:
+ * @metered: a metered status
+ *
+ * Return a string form of the @metered status. This is intended for use in
+ * debug output, and is not translated, stable, or user-friendly.
+ *
+ * Returns: metered status string
+ * Since: 0.1.0
+ */
+const gchar *
+mws_metered_to_string (MwsMetered metered)
+{
+  switch (metered)
+    {
+    case MWS_METERED_UNKNOWN:
+      return "unknown";
+    case MWS_METERED_YES:
+      return "yes";
+    case MWS_METERED_NO:
+      return "no";
+    case MWS_METERED_GUESS_YES:
+      return "guess-yes";
+    case MWS_METERED_GUESS_NO:
+      return "guess-no";
+    default:
+      g_assert_not_reached ();
+    }
+}
+
+/**
  * MwsConnectionMonitor:
  *
  * A connection monitor is an abstraction over the OS’s network interface,
