@@ -675,7 +675,7 @@ mws_connection_monitor_nm_get_connection_details (MwsConnectionMonitor *monitor,
               g_clear_error (&local_error);
             }
         }
-      else if (tariff_variant_str == NULL)
+      else if (tariff_enabled == TRINARY_VALUE_TRUE && tariff_variant_str == NULL)
         {
           g_warning ("connection.tariff is not set even though "
                      "connection.tariff-enabled is 1");
