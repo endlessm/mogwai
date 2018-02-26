@@ -533,31 +533,27 @@ mws_metered_from_nm_metered (NMMetered m)
     }
 }
 
-typedef enum
-{
-  TRINARY_VALUE_UNSET = -1,
-  TRINARY_VALUE_FALSE = 0,
-  TRINARY_VALUE_TRUE = 1,
-} TrinaryValue;
-
 /* Get a boolean configuration value from an #NMSettingUser. Valid values are
- * `0` or `1`. */
-static TrinaryValue
+ * `0` or `1`. Returns the value; if it wasn’t set in the @setting_user, the
+ * @default_value is returned. There is no way to distinguish an unset value
+ * from a set value equal to the @default_value. */
+static gboolean
 setting_user_get_boolean (NMSettingUser *setting_user,
-                          const gchar   *key)
+                          const gchar   *key,
+                          gboolean       default_value)
 {
   const gchar *str = nm_setting_user_get_data (setting_user, key);
   if (str == NULL)
-    return TRINARY_VALUE_UNSET;
+    return default_value;
   else if (g_str_equal (str, "0"))
-    return TRINARY_VALUE_FALSE;
+    return FALSE;
   else if (g_str_equal (str, "1"))
-    return TRINARY_VALUE_TRUE;
+    return TRUE;
   else
     g_warning ("Invalid value ‘%s’ for user setting ‘%s’; expecting ‘0’ or ‘1’",
                str, key);
 
-  return TRINARY_VALUE_UNSET;
+  return default_value;
 }
 
 static gboolean
@@ -631,30 +627,18 @@ mws_connection_monitor_nm_get_connection_details (MwsConnectionMonitor *monitor,
 
   if (setting_user != NULL)
     {
-      TrinaryValue download_when_metered_trinary =
-          setting_user_get_boolean (setting_user, "connection.allow-downloads-when-metered");
-      switch (download_when_metered_trinary)
-        {
-        case TRINARY_VALUE_TRUE:
-          download_when_metered = TRUE;
-          break;
-        case TRINARY_VALUE_FALSE:
-          download_when_metered = FALSE;
-          break;
-        case TRINARY_VALUE_UNSET:
-          download_when_metered = download_when_metered_default;
-          break;
-        default:
-          g_assert_not_reached ();
-        }
+      download_when_metered = setting_user_get_boolean (setting_user,
+                                                        "connection.allow-downloads-when-metered",
+                                                        download_when_metered_default);
 
-      TrinaryValue tariff_enabled = setting_user_get_boolean (setting_user,
-                                                              "connection.tariff-enabled");
+      gboolean tariff_enabled = setting_user_get_boolean (setting_user,
+                                                          "connection.tariff-enabled",
+                                                          FALSE);
       const gchar *tariff_variant_str;
       tariff_variant_str = nm_setting_user_get_data (setting_user,
                                                      "connection.tariff");
 
-      if (tariff_enabled == TRINARY_VALUE_TRUE && tariff_variant_str != NULL)
+      if (tariff_enabled && tariff_variant_str != NULL)
         {
           g_autoptr(GError) local_error = NULL;
           g_autoptr(GVariant) tariff_variant = NULL;
@@ -675,7 +659,7 @@ mws_connection_monitor_nm_get_connection_details (MwsConnectionMonitor *monitor,
               g_clear_error (&local_error);
             }
         }
-      else if (tariff_enabled == TRINARY_VALUE_TRUE && tariff_variant_str == NULL)
+      else if (tariff_enabled && tariff_variant_str == NULL)
         {
           g_warning ("connection.tariff is not set even though "
                      "connection.tariff-enabled is 1");
