@@ -715,6 +715,7 @@ mws_scheduler_reschedule (MwsScheduler *self)
 
           /* Is it safe to schedule this entry on this connection now? */
           gboolean is_safe = ((details->metered == MWS_METERED_NO ||
+                               details->metered == MWS_METERED_GUESS_NO ||
                                details->download_when_metered) &&
                               !tariff_period_reached_capacity_limit);
           g_debug ("%s: Connection ‘%s’ is %s to download entry ‘%s’ on "
