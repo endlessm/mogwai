@@ -483,3 +483,31 @@ mwt_period_get_capacity_limit (MwtPeriod *self)
 
   return self->capacity_limit;
 }
+
+/**
+ * mwt_period_contains_time:
+ * @self: a #MwtPeriod
+ * @when: the time to check
+ *
+ * Check whether @when lies within the given #MwtPeriod or any of its
+ * recurrences.
+ *
+ * Returns: %TRUE if @when lies in the period, %FALSE otherwise
+ * Since: 0.1.0
+ */
+gboolean
+mwt_period_contains_time (MwtPeriod *self,
+                          GDateTime *when)
+{
+  g_return_val_if_fail (MWT_IS_PERIOD (self), FALSE);
+  g_return_val_if_fail (when != NULL, FALSE);
+
+  /* Does the base time for the period contain @when? */
+  if (g_date_time_compare (self->start, when) <= 0 &&
+      g_date_time_compare (when, self->end) < 0)
+    return TRUE;
+
+  /* TODO: Check recurrences. */
+
+  return FALSE;
+}

@@ -441,20 +441,18 @@ mwt_tariff_lookup_period (MwtTariff *self,
   g_return_val_if_fail (MWT_IS_TARIFF (self), NULL);
   g_return_val_if_fail (when != NULL, NULL);
 
+  /* Find the set of periods which overlap @when, including taking recurrences
+   * into account. */
   /* FIXME: We don’t expect there to be many periods in a tariff. If there are,
    * this algorithm could be improved to use an interval tree or similar to
    * improve performance. */
-  /* FIXME: Need to expand the recurrences. */
   g_autoptr(GPtrArray) matches = g_ptr_array_new_with_free_func (NULL);
 
   for (gsize i = 0; i < self->periods->len; i++)
     {
       MwtPeriod *period = g_ptr_array_index (self->periods, i);
-      GDateTime *start = mwt_period_get_start (period);
-      GDateTime *end = mwt_period_get_end (period);
 
-      if (g_date_time_compare (start, when) <= 0 &&
-          g_date_time_compare (when, end) < 0)
+      if (mwt_period_contains_time (period, when))
         g_ptr_array_add (matches, period);
     }
 
