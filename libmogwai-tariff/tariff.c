@@ -452,7 +452,7 @@ mwt_tariff_lookup_period (MwtTariff *self,
     {
       MwtPeriod *period = g_ptr_array_index (self->periods, i);
 
-      if (mwt_period_contains_time (period, when))
+      if (mwt_period_contains_time (period, when, NULL, NULL))
         g_ptr_array_add (matches, period);
     }
 

@@ -86,8 +86,14 @@ MwtPeriod *mwt_period_new       (GDateTime            *start,
 GDateTime *mwt_period_get_start (MwtPeriod *self);
 GDateTime *mwt_period_get_end   (MwtPeriod *self);
 
-gboolean   mwt_period_contains_time (MwtPeriod *self,
-                                     GDateTime *when);
+gboolean   mwt_period_contains_time       (MwtPeriod  *self,
+                                           GDateTime  *when,
+                                           GDateTime **out_start,
+                                           GDateTime **out_end);
+gboolean   mwt_period_get_next_recurrence (MwtPeriod  *self,
+                                           GDateTime  *after,
+                                           GDateTime **out_next_start,
+                                           GDateTime **out_next_end);
 
 MwtPeriodRepeatType mwt_period_get_repeat_type    (MwtPeriod *self);
 guint               mwt_period_get_repeat_period  (MwtPeriod *self);
