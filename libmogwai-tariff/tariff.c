@@ -476,6 +476,287 @@ mwt_tariff_lookup_period (MwtTariff *self,
   return shortest_period;
 }
 
+static void
+update_earliest (GDateTime **earliest,
+                 MwtPeriod **earliest_from_period,
+                 MwtPeriod **earliest_to_period,
+                 GDateTime  *maybe_earlier,
+                 MwtPeriod  *maybe_earlier_from_period,
+                 MwtPeriod  *maybe_earlier_to_period)
+{
+  /* Update @earliest if @maybe_earlier is the same time, as we sort
+   * self->periods by decreasing timespan, and the shorter periods always take
+   * priority over the longer ones. */
+  if (*earliest == NULL || g_date_time_compare (maybe_earlier, *earliest) <= 0)
+    {
+      g_clear_pointer (earliest, g_date_time_unref);
+      *earliest = g_date_time_ref (maybe_earlier);
+      *earliest_from_period = maybe_earlier_from_period;
+      *earliest_to_period = maybe_earlier_to_period;
+    }
+}
+
+typedef struct
+{
+  GDateTime *when;  /* (owned) */
+  enum
+    {
+      TRANSITION_FROM,
+      TRANSITION_TO,
+    } type;
+  gsize period_index;
+  MwtPeriod *period;  /* (unowned) */
+} TransitionData;
+
+static void
+transition_data_clear (TransitionData *data)
+{
+  g_clear_pointer (&data->when, g_date_time_unref);
+}
+
+static gint
+transition_data_sort (const TransitionData *a,
+                      const TransitionData *b)
+{
+  gint when_comparison = g_date_time_compare (a->when, b->when);
+
+  if (when_comparison != 0)
+    return when_comparison;
+
+  /* Order %TRANSITION_FROM before %TRANSITION_TO. */
+  if (a->type == TRANSITION_FROM && b->type == TRANSITION_TO)
+    return -1;
+  else if (a->type == TRANSITION_TO && b->type == TRANSITION_FROM)
+    return 1;
+
+  /* If the transition types are equal, order by length/start time. That’s
+   * equivalent to ordering by the reverse index of @period in self->periods,
+   * due to the sort order we guarantee on the latter. */
+  if (a->period_index > b->period_index)
+    return -1;
+  else if (a->period_index < b->period_index)
+    return 1;
+
+  g_assert_not_reached ();
+}
+
+/* Get the next transition from @transitions after @data_index whose date/time
+ * is greater than that of @data. If no such transition exists, return %NULL. */
+static const TransitionData *
+get_next_transition (GArray               *transitions,
+                     gsize                 data_index,
+                     const TransitionData *data)
+{
+  if (data_index == G_MAXSIZE)
+    return NULL;
+
+  for (gsize next_data_index = data_index + 1; next_data_index < transitions->len; next_data_index++)
+    {
+      const TransitionData *next_data =
+          &g_array_index (transitions, TransitionData, next_data_index);
+
+      if (!g_date_time_equal (next_data->when, data->when))
+        return next_data;
+    }
+
+  return NULL;
+}
+
+/**
+ * mwt_tariff_get_next_transition:
+ * @self: a #MwtTariff
+ * @after: (nullable): time to get the next transition after
+ * @out_from_period: (out) (optional) (nullable) (transfer none): return
+ *    location for the period being transitioned out of
+ * @out_to_period: (out) (optional) (nullable) (transfer none): return location
+ *    for the period being transitioned in to
+ *
+ * Get the date and time of the first transition between periods after @after in
+ * this #MwtTariff, and return the periods being transitioned out of and in to
+ * in @out_from_period and @out_to_period.
+ *
+ * If @after is %NULL, the first transition in the tariff is returned:
+ * @out_from_period is guaranteed to be %NULL, @out_to_period is guaranteed to
+ * be non-%NULL, and a non-%NULL value is guaranteed to be returned.
+ *
+ * Either or both of @out_from_period and @out_to_period may be %NULL, if the
+ * next transition is into the first tariff of the period, out of the last
+ * tariff of the period; or if there are no more transitions after @after. It is
+ * possible for @out_from_period and @out_to_period to be set to the same
+ * #MwtPeriod instance, if one recurrence of the period ends when the next
+ * begins.
+ *
+ * If a non-%NULL date and time is returned, at least one of @out_from_period
+ * and @out_to_period (if provided) are guaranteed to be non-%NULL.
+ *
+ * Returns: (nullable) (transfer full): date and time of the next transition,
+ *    or %NULL if there are no more transitions after @after
+ * Since: 0.1.0
+ */
+GDateTime *
+mwt_tariff_get_next_transition (MwtTariff  *self,
+                                GDateTime  *after,
+                                MwtPeriod **out_from_period,
+                                MwtPeriod **out_to_period)
+{
+  g_return_val_if_fail (MWT_IS_TARIFF (self), NULL);
+
+  /* If (@after == NULL), we need to get the first transition. */
+  if (after == NULL)
+    {
+      g_autoptr(GDateTime) first_transition = NULL;
+      MwtPeriod *first_from_period = NULL;
+      MwtPeriod *first_to_period = NULL;
+
+      /* Periods are stored ordered by time span first, so we can’t just use the
+       * first one. */
+      for (gsize i = 0; i < self->periods->len; i++)
+        {
+          MwtPeriod *period = g_ptr_array_index (self->periods, i);
+
+          update_earliest (&first_transition, &first_from_period, &first_to_period,
+                           mwt_period_get_start (period), NULL, period);
+        }
+
+      g_assert (first_transition != NULL);
+      g_assert (first_from_period == NULL);
+      g_assert (first_to_period != NULL);
+      g_assert (mwt_period_contains_time (first_to_period, first_transition, NULL, NULL));
+
+      if (out_from_period)
+        *out_from_period = first_from_period;
+      if (out_to_period)
+        *out_to_period = first_to_period;
+
+      return g_steal_pointer (&first_transition);
+    }
+
+  /* Otherwise, get the next transition for each of the periods in the tariff.
+   * For each period, if the period contains @after, then we know its next
+   * transition will be FROM that period to another. Otherwise, if the period
+   * has another recurrence after @after, we know its next transition will be
+   * TO that period from another. Build this up into an array of
+   * #TransitionData. */
+  g_autoptr(GDateTime) next_transition = NULL;
+  MwtPeriod *next_from_period = NULL;
+  MwtPeriod *next_to_period = NULL;
+
+  g_autoptr(GArray) transitions = g_array_sized_new (FALSE, FALSE,
+                                                     sizeof (TransitionData),
+                                                     self->periods->len);
+  g_array_set_clear_func (transitions, (GDestroyNotify) transition_data_clear);
+
+  for (gsize i = 0; i < self->periods->len; i++)
+    {
+      MwtPeriod *period = g_ptr_array_index (self->periods, i);
+
+      g_array_set_size (transitions, transitions->len + 1);
+      TransitionData *data = &g_array_index (transitions, TransitionData,
+                                             transitions->len - 1);
+
+      if (mwt_period_contains_time (period, after, NULL, &data->when))
+        {
+          g_assert (g_date_time_compare (data->when, after) > 0);
+          data->type = TRANSITION_FROM;
+          data->period_index = i;
+          data->period = period;
+        }
+      else if (mwt_period_get_next_recurrence (period, after, &data->when, NULL))
+        {
+          g_assert (g_date_time_compare (data->when, after) > 0);
+          data->type = TRANSITION_TO;
+          data->period_index = i;
+          data->period = period;
+        }
+      else
+        {
+          /* This period has no more transitions; erase the prospective entry
+           * from @transitions. */
+          g_array_set_size (transitions, transitions->len - 1);
+        }
+    }
+
+  /* Is @transitions empty? */
+  if (transitions->len == 0)
+    goto done;
+
+  /* Sort the transitions. */
+  g_array_sort (transitions, (GCompareFunc) transition_data_sort);
+
+  /* All the transitions in @transitions are guaranteed to be equal to or later
+   * than @after. So far, the @next_transition_data only contains *one* of the
+   * periods which the transition enters/leaves. Now we need to work out what
+   * the other period is. It may be %NULL. */
+  const TransitionData *next_transition_data =
+      &g_array_index (transitions, TransitionData, 0);
+  g_assert (g_date_time_compare (after, next_transition_data->when) < 0);
+
+  switch (next_transition_data->type)
+    {
+    case TRANSITION_FROM:
+        {
+          /* In this case, @next_transition_data concerns a transition FROM one
+           * period to another. The #TransitionData.when field is the end
+           * date/time of a recurrence of the period given in
+           * #TransitionData.period. Find the following transition. If it’s also
+           * a FROM transition, we have one period nested within another, and
+           * the transition we care about (@next_transition_data) is FROM the
+           * inner to the outer. If it’s a TO transition instead, there could be
+           * several different valid arrangements of periods, and the easiest
+           * way to find the period the transition is going to is by calling
+           * mwt_tariff_lookup_period() for the end of the current one. */
+          const TransitionData *following_transition_data =
+              get_next_transition (transitions, 0, next_transition_data);
+          next_transition = g_date_time_ref (next_transition_data->when);
+          next_from_period = next_transition_data->period;
+          if (following_transition_data != NULL &&
+              following_transition_data->type == TRANSITION_FROM)
+            next_to_period = following_transition_data->period;
+          else
+            next_to_period = mwt_tariff_lookup_period (self, next_transition);
+        }
+      break;
+    case TRANSITION_TO:
+        {
+          next_transition = g_date_time_ref (next_transition_data->when);
+          next_to_period = next_transition_data->period;
+
+          /* In this case, we could have two transitions, FROM and TO, with
+           * @after sitting between them. There could be a period which spans
+           * from before FROM to after TO. To detect this, we’d have to walk
+           * backwards through the list of transitions (potentially needing
+           * to generate new ones), bracketing them, until we found an
+           * unmatched TO transition. It seems easier to do this hack. I am
+           * not happy with this hack, but it does mean saving a lot of code
+           * and testing. The only algorithmically nice fix for this is to
+           * rewrite everything to use an interval tree.
+           * FIXME: Should we put lower bounds on the permitted lengths of periods? */
+          g_autoptr(GDateTime) before_next_transition = g_date_time_add_seconds (next_transition, -1.0);
+          next_from_period = mwt_tariff_lookup_period (self, before_next_transition);
+        }
+      break;
+    default:
+      g_assert_not_reached ();
+    }
+
+done:
+  g_assert (next_transition != NULL || next_from_period == NULL);
+  g_assert (next_transition != NULL || next_to_period == NULL);
+  g_assert (next_transition == NULL ||
+            (next_from_period != NULL || next_to_period != NULL));
+  g_assert (next_transition == NULL ||
+            g_date_time_compare (next_transition, after) > 0);
+  g_assert (next_transition == NULL || next_to_period == NULL ||
+            mwt_period_contains_time (next_to_period, next_transition, NULL, NULL));
+
+  if (out_from_period != NULL)
+    *out_from_period = next_from_period;
+  if (out_to_period != NULL)
+    *out_to_period = next_to_period;
+
+  return g_steal_pointer (&next_transition);
+}
+
 /**
  * mwt_tariff_validate_name:
  * @name: (nullable): string to validate
