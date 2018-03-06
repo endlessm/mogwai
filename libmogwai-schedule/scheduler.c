@@ -96,6 +96,10 @@ struct _MwsScheduler
   /* Scheduling data sources. */
   MwsConnectionMonitor *connection_monitor;  /* (owned) */
 
+  /* Time tracking. */
+  GMainContext *reschedule_context;  /* (owned) */
+  GSource *reschedule_source;  /* (owned) (nullable) */
+
   /* Mapping from entry ID to (not nullable) entry. */
   GHashTable *entries;  /* (owned) (element-type utf8 MwsScheduleEntry) */
   gsize max_entries;
@@ -226,6 +230,7 @@ mws_scheduler_class_init (MwsSchedulerClass *klass)
 static void
 mws_scheduler_init (MwsScheduler *self)
 {
+  self->reschedule_context = g_main_context_ref_thread_default ();
   self->entries = g_hash_table_new_full (g_str_hash, g_str_equal,
                                          NULL, g_object_unref);
   self->max_entries = DEFAULT_MAX_ENTRIES;
@@ -270,6 +275,14 @@ mws_scheduler_dispose (GObject *object)
     }
 
   g_clear_object (&self->connection_monitor);
+
+  if (self->reschedule_source != NULL)
+    {
+      g_source_destroy (self->reschedule_source);
+      g_source_unref (self->reschedule_source);
+      self->reschedule_source = NULL;
+    }
+  g_clear_pointer (&self->reschedule_context, g_main_context_unref);
 
   /* Chain up to the parent class */
   G_OBJECT_CLASS (mws_scheduler_parent_class)->dispose (object);
@@ -595,6 +608,14 @@ mws_scheduler_is_entry_active (MwsScheduler     *self,
   return data->is_active;
 }
 
+static gboolean
+reschedule_cb (gpointer user_data)
+{
+  MwsScheduler *self = MWS_SCHEDULER (user_data);
+  mws_scheduler_reschedule (self);
+  return G_SOURCE_REMOVE;
+}
+
 /**
  * mws_scheduler_reschedule:
  * @self: a #MwsScheduler
@@ -620,6 +641,14 @@ mws_scheduler_reschedule (MwsScheduler *self)
   /* Sanity checks. */
   g_assert (g_hash_table_size (self->entries) ==
             g_hash_table_size (self->entries_data));
+
+  /* Clear any pending reschedule. */
+  if (self->reschedule_source != NULL)
+    {
+      g_source_destroy (self->reschedule_source);
+      g_source_unref (self->reschedule_source);
+      self->reschedule_source = NULL;
+    }
 
   /* Fast path. */
   if (g_hash_table_size (self->entries) == 0)
@@ -653,6 +682,11 @@ mws_scheduler_reschedule (MwsScheduler *self)
           continue;
         }
     }
+
+  /* As we iterate over all the entries, see when the earliest time we next need
+   * to reschedule is. */
+  g_autoptr(GDateTime) now = g_date_time_new_now_local ();
+  g_autoptr(GDateTime) next_reschedule = NULL;
 
   /* For each entry, see if it’s permissible to start downloading it. For the
    * moment, we only use whether the network is metered as a basis for this
@@ -690,14 +724,12 @@ mws_scheduler_reschedule (MwsScheduler *self)
                                                                 MwsConnectionDetails, i);
 
           /* If this connection has a tariff specified, work out whether we’ve
-           * hit any of the limits for the current tariff period.
-           * FIXME: We need to reschedule when the tariff period changes. */
+           * hit any of the limits for the current tariff period. */
           MwtPeriod *tariff_period = NULL;
           gboolean tariff_period_reached_capacity_limit = FALSE;
 
           if (details->tariff != NULL)
             {
-              g_autoptr(GDateTime) now = g_date_time_new_now_local ();
               tariff_period = mwt_tariff_lookup_period (details->tariff, now);
             }
 
@@ -729,6 +761,29 @@ mws_scheduler_reschedule (MwsScheduler *self)
 
           if (is_safe)
             g_ptr_array_add (safe_connections, (gpointer) all_connection_ids[i]);
+
+          /* Work out when to do the next reschedule due to this tariff changing
+           * periods. */
+          if (details->tariff != NULL)
+            {
+              g_autoptr(GDateTime) next_transition = NULL;
+              next_transition = mwt_tariff_get_next_transition (details->tariff, now,
+                                                                NULL, NULL);
+
+              g_autofree gchar *next_transition_str = NULL;
+              next_transition_str = (next_transition != NULL) ? g_date_time_format (next_transition, "%FT%T%:::z") : g_strdup ("never");
+              g_debug ("%s: Connection ‘%s’ next transition is %s",
+                       G_STRFUNC, all_connection_ids[i], next_transition_str);
+
+              if (next_transition != NULL &&
+                  g_date_time_compare (now, next_transition) < 0 &&
+                  (next_reschedule == NULL ||
+                   g_date_time_compare (next_transition, next_reschedule) < 0))
+                {
+                  g_clear_pointer (&next_reschedule, g_date_time_unref);
+                  next_reschedule = g_date_time_ref (next_transition);
+                }
+            }
         }
 
       /* If all the active connections are safe for this entry, it can be made
@@ -760,5 +815,30 @@ mws_scheduler_reschedule (MwsScheduler *self)
                G_STRFUNC, entries_now_active->len, entries_were_active->len);
       g_signal_emit_by_name (G_OBJECT (self), "active-entries-changed",
                              entries_now_active, entries_were_active);
+    }
+
+  /* Set up the next scheduling run. */
+  if (next_reschedule != NULL)
+    {
+      /* FIXME: This doesn’t take into account the difference between monotonic
+       * and wall clock time: if the computer suspends, or the timezone changes,
+       * the reschedule will happen at the wrong time. We probably want to split
+       * this out into a separate interface, with an implementation which can
+       * monitor org.freedesktop.timedate1. */
+      GTimeSpan interval = g_date_time_difference (next_reschedule, now);
+      g_assert (interval >= 0);
+
+      self->reschedule_source = g_timeout_source_new_seconds (interval / G_USEC_PER_SEC);
+      g_source_set_callback (self->reschedule_source, reschedule_cb, self, NULL);
+      g_source_attach (self->reschedule_source, self->reschedule_context);
+
+      g_autofree gchar *next_reschedule_str = NULL;
+      next_reschedule_str = g_date_time_format (next_reschedule, "%FT%T%:::z");
+      g_debug ("%s: Setting next reschedule for %s (in %" G_GUINT64_FORMAT " seconds)",
+               G_STRFUNC, next_reschedule_str, (guint64) interval / G_USEC_PER_SEC);
+    }
+  else
+    {
+      g_debug ("%s: Setting next reschedule to never", G_STRFUNC);
     }
 }
