@@ -145,8 +145,8 @@ mwt_tariff_class_init (MwtTariffClass *klass)
    * The set of #MwtPeriods in the tariff. See the documentation for #MwtTariff
    * for the requirements about periods being non-overlapping, etc.
    *
-   * The periods are guaranteed to be ordered by time span, and then by start
-   * date/time.
+   * The periods are guaranteed to be ordered by decreasing time span, and then
+   * by increasing start date/time.
    *
    * Since: 0.1.0
    */
