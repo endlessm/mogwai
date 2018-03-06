@@ -453,8 +453,8 @@ mwt_tariff_lookup_period (MwtTariff *self,
         g_ptr_array_add (matches, period);
     }
 
-  /* Pick the shortest period. There should be no ties here, since having two
-   * periods with an identical span and start date/time is disallowed. */
+  /* Pick the shortest period. There should be no ties here, since overlapping
+   * periods are disallowed. */
   MwtPeriod *shortest_period = NULL;
   GTimeSpan shortest_period_duration = G_MAXINT64;
   for (gsize i = 0; i < matches->len; i++)
