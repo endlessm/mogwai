@@ -60,6 +60,10 @@ GPtrArray   *mwt_tariff_get_periods      (MwtTariff    *self);
 
 MwtPeriod   *mwt_tariff_lookup_period    (MwtTariff    *self,
                                           GDateTime    *when);
+GDateTime   *mwt_tariff_get_next_transition (MwtTariff  *self,
+                                             GDateTime  *after,
+                                             MwtPeriod **out_from_period,
+                                             MwtPeriod **out_to_period);
 
 gboolean     mwt_tariff_validate_name    (const gchar  *name);
 
