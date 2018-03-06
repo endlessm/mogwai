@@ -237,9 +237,11 @@ mwt_tariff_set_property (GObject      *object,
 }
 
 /* ∀ p_1, p_2 ∈ self->periods.
- *   ¬ (p_1.start ≤ p_2.start ∧
+ *   ¬ (p_1.start < p_2.start ∧
  *      p_1.end > p_2.start ∧
- *      p_1.end ≤ p_2.end)
+ *      p_1.end < p_2.end) ∧
+ *   ¬ (p_1.start = p_2.start ∧
+ *      p_1.end = p_2.end)
  */
 static gboolean
 mwt_tariff_are_periods_nonoverlapping (GPtrArray *periods)
@@ -265,9 +267,12 @@ mwt_tariff_are_periods_nonoverlapping (GPtrArray *periods)
 
           /* p_1: ▀▀▀
            * p_2:  ▀▀▀
+           * or (when i and j have swapped)
+           * p_1:  ▀▀▀
+           * p_2: ▀▀▀
            */
           if (g_date_time_compare (p_1_start, p_2_start) < 0 &&
-              g_date_time_compare (p_1_end, p_2_start) >= 0 &&
+              g_date_time_compare (p_1_end, p_2_start) > 0 &&
               g_date_time_compare (p_1_end, p_2_end) < 0)
             return FALSE;
 
@@ -276,14 +281,6 @@ mwt_tariff_are_periods_nonoverlapping (GPtrArray *periods)
            */
           if (g_date_time_compare (p_1_start, p_2_start) == 0 &&
               g_date_time_compare (p_1_end, p_2_end) == 0)
-            return FALSE;
-
-          /* p_1:  ▀▀▀
-           * p_2: ▀▀▀
-           */
-          if (g_date_time_compare (p_1_start, p_2_start) > 0 &&
-              g_date_time_compare (p_1_start, p_2_end) < 0 &&
-              g_date_time_compare (p_1_end, p_2_end) > 0)
             return FALSE;
         }
     }
