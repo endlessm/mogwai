@@ -510,6 +510,44 @@ test_period_contains_time (void)
         2018, 4, 8, 1, 35, 0.0, "Europe/London",
         TRUE, 2018, 4, 8, 1, 30, 0.0, "Europe/London", 2018, 4, 8, 1, 45, 0.0, "Europe/London",
         TRUE, 2018, 4, 15, 1, 30, 0.0, "Europe/London", 2018, 4, 15, 1, 45, 0.0, "Europe/London" },
+      /* A DST check for a period which contains a DST hole and some time on
+       * either side. This is the same DST switch as above; the period
+       * 01:00–01:59 does not exist. However, since our recurrence contains time
+       * either side, we expect the recurrence to exist every week, including
+       * the week of the DST switch. The length of the recurrence (not tested
+       * here) will be 60 minutes shorter on that week, though. */
+      { 2018, 3, 18, 0, 30, 0.0, "Europe/London", 2018, 3, 18, 2, 30, 0.0, "Europe/London",
+        MWT_PERIOD_REPEAT_WEEK, 1,
+        2018, 3, 18, 1, 35, 0.0, "Europe/London",
+        TRUE, 2018, 3, 18, 0, 30, 0.0, "Europe/London", 2018, 3, 18, 2, 30, 0.0, "Europe/London",
+        TRUE, 2018, 3, 25, 0, 30, 0.0, "Europe/London", 2018, 3, 25, 2, 30, 0.0, "Europe/London" },
+      { 2018, 3, 18, 0, 30, 0.0, "Europe/London", 2018, 3, 18, 2, 30, 0.0, "Europe/London",
+        MWT_PERIOD_REPEAT_WEEK, 1,
+        2018, 3, 25, 0, 30, 0.0, "Europe/London",
+        TRUE, 2018, 3, 25, 0, 30, 0.0, "Europe/London", 2018, 3, 25, 2, 30, 0.0, "Europe/London",
+        TRUE, 2018, 4, 1, 0, 30, 0.0, "Europe/London", 2018, 4, 1, 2, 30, 0.0, "Europe/London" },
+      { 2018, 3, 18, 0, 30, 0.0, "Europe/London", 2018, 3, 18, 2, 30, 0.0, "Europe/London",
+        MWT_PERIOD_REPEAT_WEEK, 1,
+        2018, 3, 25, 1, 0, 0.0, "Europe/London",
+        TRUE, 2018, 3, 25, 0, 30, 0.0, "Europe/London", 2018, 3, 25, 2, 30, 0.0, "Europe/London",
+        TRUE, 2018, 4, 1, 0, 30, 0.0, "Europe/London", 2018, 4, 1, 2, 30, 0.0, "Europe/London" },
+      { 2018, 3, 18, 0, 30, 0.0, "Europe/London", 2018, 3, 18, 2, 30, 0.0, "Europe/London",
+        MWT_PERIOD_REPEAT_WEEK, 1,
+        2018, 3, 25, 2, 0, 0.0, "Europe/London",
+        TRUE, 2018, 3, 25, 0, 30, 0.0, "Europe/London", 2018, 3, 25, 2, 30, 0.0, "Europe/London",
+        TRUE, 2018, 4, 1, 0, 30, 0.0, "Europe/London", 2018, 4, 1, 2, 30, 0.0, "Europe/London" },
+      /* Partial overlap with a DST hole, using all the same setup as
+       * immediately above. */
+      { 2018, 3, 18, 0, 30, 0.0, "Europe/London", 2018, 3, 18, 1, 30, 0.0, "Europe/London",
+        MWT_PERIOD_REPEAT_WEEK, 1,
+        2018, 3, 18, 0, 35, 0.0, "Europe/London",
+        TRUE, 2018, 3, 18, 0, 30, 0.0, "Europe/London", 2018, 3, 18, 1, 30, 0.0, "Europe/London",
+        TRUE, 2018, 3, 25, 0, 30, 0.0, "Europe/London", 2018, 3, 25, 2, 0, 0.0, "Europe/London" },
+      { 2018, 3, 18, 0, 30, 0.0, "Europe/London", 2018, 3, 18, 1, 30, 0.0, "Europe/London",
+        MWT_PERIOD_REPEAT_WEEK, 1,
+        2018, 3, 25, 0, 35, 0.0, "Europe/London",
+        TRUE, 2018, 3, 25, 0, 30, 0.0, "Europe/London", 2018, 3, 25, 2, 0, 0.0, "Europe/London",
+        TRUE, 2018, 4, 1, 0, 30, 0.0, "Europe/London", 2018, 4, 1, 1, 30, 0.0, "Europe/London" },
       /* Test what gnome-control-center does, which is to have two periods: one
        * covers all time (no need to test that, as it doesn’t recur), and the
        * other covers 22:00–06:00 at the start of the Unix time period in 1970,
@@ -575,9 +613,99 @@ test_period_contains_time (void)
         9999, 12, 31, 23, 0, 0.0, "Z",
         FALSE, 0, 0, 0, 0, 0, 0.0, "Z", 0, 0, 0, 0, 0, 0.0, "Z",
         FALSE, 0, 0, 0, 0, 0, 0.0, "Z", 0, 0, 0, 0, 0, 0.0, "Z" },
-      /* TODO: add more tests where next_period doesn’t exist due to DST change */
-      /* TODO: what about tests where a recurrence partially overlaps a DST hole? or is a superset of one? */
-      /* TODO: Can we have something which is 2 days long which recurs every day? */
+      /* More DST checks. There’s a DST switch on 2018-10-28 in Europe/London,
+       * where the clocks go backward 1h at 02:00, so the period 01:00–01:59
+       * happens twice (once in the daylight savings timezone, once outside it).
+       * We expect a recurrence to fall on the first occurence of those hours,
+       * but not the second (since that’s not a week later).
+       * In this test, we sometimes express the timezone as ±hh to make it clear
+       * which side of the DST switch a time is on: the times
+       * 2018-10-28T01:30:00+01 and 2018-10-28T01:30:00+00 both happen in
+       * Europe/London (in that order). */
+      { 2018, 10, 21, 1, 30, 0.0, "Europe/London", 2018, 10, 21, 1, 45, 0.0, "Europe/London",
+        MWT_PERIOD_REPEAT_WEEK, 1,
+        2018, 10, 21, 1, 35, 0.0, "Europe/London",
+        TRUE, 2018, 10, 21, 1, 30, 0.0, "Europe/London", 2018, 10, 21, 1, 45, 0.0, "Europe/London",
+        TRUE, 2018, 10, 28, 1, 30, 0.0, "+01", 2018, 10, 28, 1, 45, 0.0, "+01" },
+      { 2018, 10, 21, 1, 30, 0.0, "Europe/London", 2018, 10, 21, 1, 45, 0.0, "Europe/London",
+        MWT_PERIOD_REPEAT_WEEK, 1,
+        2018, 10, 28, 1, 35, 0.0, "+01",
+        TRUE, 2018, 10, 28, 1, 30, 0.0, "+01", 2018, 10, 28, 1, 45, 0.0, "+01",
+        TRUE, 2018, 11, 04, 1, 30, 0.0, "Europe/London", 2018, 11, 04, 1, 45, 0.0, "Europe/London" },
+      { 2018, 10, 21, 1, 30, 0.0, "Europe/London", 2018, 10, 21, 1, 45, 0.0, "Europe/London",
+        MWT_PERIOD_REPEAT_WEEK, 1,
+        2018, 10, 28, 2, 0, 0.0, "+01",
+        FALSE, 0, 0, 0, 0, 0, 0.0, "Z", 0, 0, 0, 0, 0, 0.0, "Z",
+        TRUE, 2018, 11, 04, 1, 30, 0.0, "Europe/London", 2018, 11, 04, 1, 45, 0.0, "Europe/London" },
+      { 2018, 10, 21, 1, 30, 0.0, "Europe/London", 2018, 10, 21, 1, 45, 0.0, "Europe/London",
+        MWT_PERIOD_REPEAT_WEEK, 1,
+        2018, 10, 28, 1, 0, 0.0, "+00",
+        FALSE, 0, 0, 0, 0, 0, 0.0, "Z", 0, 0, 0, 0, 0, 0.0, "Z",
+        TRUE, 2018, 11, 04, 1, 30, 0.0, "Europe/London", 2018, 11, 04, 1, 45, 0.0, "Europe/London" },
+      { 2018, 10, 21, 1, 30, 0.0, "Europe/London", 2018, 10, 21, 1, 45, 0.0, "Europe/London",
+        MWT_PERIOD_REPEAT_WEEK, 1,
+        2018, 10, 28, 1, 35, 0.0, "+00",
+        FALSE, 0, 0, 0, 0, 0, 0.0, "Z", 0, 0, 0, 0, 0, 0.0, "Z",
+        TRUE, 2018, 11, 04, 1, 30, 0.0, "Europe/London", 2018, 11, 04, 1, 45, 0.0, "Europe/London" },
+      { 2018, 10, 21, 1, 30, 0.0, "Europe/London", 2018, 10, 21, 1, 45, 0.0, "Europe/London",
+        MWT_PERIOD_REPEAT_WEEK, 1,
+        2018, 11, 04, 1, 35, 0.0, "+00",
+        TRUE, 2018, 11, 04, 1, 30, 0.0, "Europe/London", 2018, 11, 04, 1, 45, 0.0, "Europe/London",
+        TRUE, 2018, 11, 11, 1, 30, 0.0, "Europe/London", 2018, 11, 11, 1, 45, 0.0, "Europe/London" },
+      /* Another DST check with looping time as above, where the period contains
+       * the looping time period, plus some extra normal time before and after.
+       * We expect that the recurrence will contain both the first and second
+       * occurrence of the looped hours. */
+      { 2018, 10, 21, 0, 30, 0.0, "Europe/London", 2018, 10, 21, 2, 30, 0.0, "Europe/London",
+        MWT_PERIOD_REPEAT_WEEK, 1,
+        2018, 10, 21, 1, 35, 0.0, "Europe/London",
+        TRUE, 2018, 10, 21, 0, 30, 0.0, "Europe/London", 2018, 10, 21, 2, 30, 0.0, "Europe/London",
+        TRUE, 2018, 10, 28, 0, 30, 0.0, "+01", 2018, 10, 28, 2, 30, 0.0, "+00" },
+      { 2018, 10, 21, 0, 30, 0.0, "Europe/London", 2018, 10, 21, 2, 30, 0.0, "Europe/London",
+        MWT_PERIOD_REPEAT_WEEK, 1,
+        2018, 10, 28, 1, 35, 0.0, "+01",
+        TRUE, 2018, 10, 28, 0, 30, 0.0, "+01", 2018, 10, 28, 2, 30, 0.0, "+00",
+        TRUE, 2018, 11, 04, 0, 30, 0.0, "Europe/London", 2018, 11, 04, 2, 30, 0.0, "Europe/London" },
+      { 2018, 10, 21, 0, 30, 0.0, "Europe/London", 2018, 10, 21, 2, 30, 0.0, "Europe/London",
+        MWT_PERIOD_REPEAT_WEEK, 1,
+        2018, 10, 28, 1, 35, 0.0, "+00",
+        TRUE, 2018, 10, 28, 0, 30, 0.0, "+01", 2018, 10, 28, 2, 30, 0.0, "+00",
+        TRUE, 2018, 11, 04, 0, 30, 0.0, "Europe/London", 2018, 11, 04, 2, 30, 0.0, "Europe/London" },
+      { 2018, 10, 21, 0, 30, 0.0, "Europe/London", 2018, 10, 21, 2, 30, 0.0, "Europe/London",
+        MWT_PERIOD_REPEAT_WEEK, 1,
+        2018, 10, 28, 2, 30, 0.0, "+00",
+        FALSE, 0, 0, 0, 0, 0, 0.0, "Z", 0, 0, 0, 0, 0, 0.0, "Z",
+        TRUE, 2018, 11, 04, 0, 30, 0.0, "Europe/London", 2018, 11, 04, 2, 30, 0.0, "Europe/London" },
+      /* Another DST check with looping time as above, where the period
+       * partially overlaps the looping time period, plus some extra normal time
+       * before it (but not after it). We expect that the recurrence will
+       * contain part of the first occurrence of the looped hours, but none of
+       * the second. */
+      { 2018, 10, 21, 0, 30, 0.0, "Europe/London", 2018, 10, 21, 1, 30, 0.0, "Europe/London",
+        MWT_PERIOD_REPEAT_WEEK, 1,
+        2018, 10, 21, 0, 35, 0.0, "Europe/London",
+        TRUE, 2018, 10, 21, 0, 30, 0.0, "Europe/London", 2018, 10, 21, 1, 30, 0.0, "Europe/London",
+        TRUE, 2018, 10, 28, 0, 30, 0.0, "+01", 2018, 10, 28, 1, 30, 0.0, "+01" },
+      { 2018, 10, 21, 0, 30, 0.0, "Europe/London", 2018, 10, 21, 1, 30, 0.0, "Europe/London",
+        MWT_PERIOD_REPEAT_WEEK, 1,
+        2018, 10, 28, 0, 35, 0.0, "+01",
+        TRUE, 2018, 10, 28, 0, 30, 0.0, "+01", 2018, 10, 28, 1, 30, 0.0, "+01",
+        TRUE, 2018, 11, 4, 0, 30, 0.0, "Europe/London", 2018, 11, 4, 1, 30, 0.0, "Europe/London" },
+      { 2018, 10, 21, 0, 30, 0.0, "Europe/London", 2018, 10, 21, 1, 30, 0.0, "Europe/London",
+        MWT_PERIOD_REPEAT_WEEK, 1,
+        2018, 10, 28, 1, 29, 0.0, "+01",
+        TRUE, 2018, 10, 28, 0, 30, 0.0, "+01", 2018, 10, 28, 1, 30, 0.0, "+01",
+        TRUE, 2018, 11, 4, 0, 30, 0.0, "Europe/London", 2018, 11, 4, 1, 30, 0.0, "Europe/London" },
+      { 2018, 10, 21, 0, 30, 0.0, "Europe/London", 2018, 10, 21, 1, 30, 0.0, "Europe/London",
+        MWT_PERIOD_REPEAT_WEEK, 1,
+        2018, 10, 28, 1, 30, 0.0, "+01",
+        FALSE, 0, 0, 0, 0, 0, 0.0, "Z", 0, 0, 0, 0, 0, 0.0, "Z",
+        TRUE, 2018, 11, 4, 0, 30, 0.0, "Europe/London", 2018, 11, 4, 1, 30, 0.0, "Europe/London" },
+      { 2018, 10, 21, 0, 30, 0.0, "Europe/London", 2018, 10, 21, 1, 30, 0.0, "Europe/London",
+        MWT_PERIOD_REPEAT_WEEK, 1,
+        2018, 10, 28, 1, 30, 0.0, "+00",
+        FALSE, 0, 0, 0, 0, 0, 0.0, "Z", 0, 0, 0, 0, 0, 0.0, "Z",
+        TRUE, 2018, 11, 4, 0, 30, 0.0, "Europe/London", 2018, 11, 4, 1, 30, 0.0, "Europe/London" },
     };
 
   for (gsize i = 0; i < G_N_ELEMENTS (vectors); i++)
