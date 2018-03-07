@@ -494,8 +494,8 @@ mwt_period_get_capacity_limit (MwtPeriod *self)
   return self->capacity_limit;
 }
 
-/* Add @n repeat periods to #MwtPeriod:start #MwtPeriod:end, and return a new
- * #GDateTime for each of them. @n must be positive.
+/* Add @n repeat periods to #MwtPeriod:start and #MwtPeriod:end, and return a
+ * new #GDateTime for each of them. @n must be positive.
  *
  * @out_start and @out_end are both (inout), ignoring and freeing whatever old
  * value is passed in, and returning the result.
@@ -524,8 +524,7 @@ get_nth_recurrence (MwtPeriod  *self,
   g_assert (self->repeat_period != 0);
   g_assert (n != 0);
 
-  if ((gint64) n * (gint64) self->repeat_period < G_MININT ||
-      (gint64) n * (gint64) self->repeat_period > G_MAXINT)
+  if (n > G_MAXINT / self->repeat_period)
     goto done;
 
   gint addand = self->repeat_period * n;
@@ -559,7 +558,8 @@ get_nth_recurrence (MwtPeriod  *self,
     }
 
 done:
-  /* Either both are set, or neither is set. */
+  /* We must not return one date without the other. If one, but not both, of the
+   * g_date_time_add_*() calls failed, squash the other result. */
   if (new_start == NULL || new_end == NULL)
     {
       g_clear_pointer (&new_start, g_date_time_unref);
