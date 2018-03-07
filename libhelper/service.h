@@ -46,6 +46,7 @@ GQuark hlp_service_error_quark (void);
  * @HLP_SERVICE_ERROR_NAME_UNAVAILABLE: Bus or well-known name unavailable.
  * @HLP_SERVICE_ERROR_INVALID_ENVIRONMENT: Runtime environment is insecure or
  *    otherwise invalid for running the daemon.
+ * @HLP_SERVICE_ERROR_TIMEOUT: Inactivity timeout reached.
  *
  * Errors from running a service.
  *
@@ -57,6 +58,7 @@ typedef enum
   HLP_SERVICE_ERROR_INVALID_OPTIONS,
   HLP_SERVICE_ERROR_NAME_UNAVAILABLE,
   HLP_SERVICE_ERROR_INVALID_ENVIRONMENT,
+  HLP_SERVICE_ERROR_TIMEOUT,
 } HlpServiceError;
 
 #define HLP_TYPE_SERVICE hlp_service_get_type ()
@@ -93,5 +95,12 @@ void        hlp_service_exit             (HlpService    *self,
 
 GDBusConnection *hlp_service_get_dbus_connection (HlpService *self);
 int              hlp_service_get_exit_signal     (HlpService *self);
+
+guint hlp_service_get_inactivity_timeout (HlpService *self);
+void  hlp_service_set_inactivity_timeout (HlpService *self,
+                                          guint       timeout_ms);
+
+void  hlp_service_hold    (HlpService *self);
+void  hlp_service_release (HlpService *self);
 
 G_END_DECLS
