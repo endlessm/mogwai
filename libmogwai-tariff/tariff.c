@@ -685,9 +685,9 @@ mwt_tariff_get_next_transition (MwtTariff  *self,
   g_array_sort (transitions, (GCompareFunc) transition_data_sort);
 
   /* All the transitions in @transitions are guaranteed to be equal to or later
-   * than @after. So far, the #TransitionData only contains *one* of the periods
-   * which the transition enters/leaves. Now we need to work out what the other
-   * period is. It may be %NULL. */
+   * than @after. So far, the @next_transition_data only contains *one* of the
+   * periods which the transition enters/leaves. Now we need to work out what
+   * the other period is. It may be %NULL. */
   const TransitionData *next_transition_data =
       &g_array_index (transitions, TransitionData, 0);
   g_assert (g_date_time_compare (after, next_transition_data->when) < 0);
