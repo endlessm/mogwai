@@ -696,6 +696,16 @@ mwt_tariff_get_next_transition (MwtTariff  *self,
     {
     case TRANSITION_FROM:
         {
+          /* In this case, @next_transition_data concerns a transition FROM one
+           * period to another. The #TransitionData.when field is the end
+           * date/time of a recurrence of the period given in
+           * #TransitionData.period. Find the following transition. If it’s also
+           * a FROM transition, we have one period nested within another, and
+           * the transition we care about (@next_transition_data) is FROM the
+           * inner to the outer. If it’s a TO transition instead, there could be
+           * several different valid arrangements of periods, and the easiest
+           * way to find the period the transition is going to is by calling
+           * mwt_tariff_lookup_period() for the end of the current one. */
           const TransitionData *following_transition_data =
               get_next_transition (transitions, 0, next_transition_data);
           next_transition = g_date_time_ref (next_transition_data->when);
