@@ -51,6 +51,8 @@ static void hlp_service_set_property (GObject      *object,
                                       const GValue *value,
                                       GParamSpec   *pspec);
 
+static void cancel_inactivity_timeout (HlpService *self);
+
 /**
  * HlpService:
  *
@@ -80,6 +82,10 @@ typedef struct
 
   GSource *sigint_source;  /* (owned) (nullable) */
   GSource *sigterm_source;  /* (owned) (nullable) */
+
+  guint inactivity_timeout_ms;  /* 0 indicates no timeout */
+  GSource *inactivity_timeout_source;  /* (owned) (nullable) */
+  guint hold_count;
 } HlpServicePrivate;
 
 typedef enum
@@ -89,6 +95,7 @@ typedef enum
   PROP_SUMMARY,
   PROP_BUS_TYPE,
   PROP_SERVICE_ID,
+  PROP_INACTIVITY_TIMEOUT,
 } HlpServiceProperty;
 
 G_DEFINE_ABSTRACT_TYPE_WITH_PRIVATE (HlpService, hlp_service, G_TYPE_OBJECT)
@@ -97,7 +104,7 @@ static void
 hlp_service_class_init (HlpServiceClass *klass)
 {
   GObjectClass *object_class = (GObjectClass *) klass;
-  GParamSpec *props[PROP_SERVICE_ID + 1] = { NULL, };
+  GParamSpec *props[PROP_INACTIVITY_TIMEOUT + 1] = { NULL, };
 
   object_class->dispose = hlp_service_dispose;
   object_class->get_property = hlp_service_get_property;
@@ -191,6 +198,25 @@ hlp_service_class_init (HlpServiceClass *klass)
                            G_PARAM_CONSTRUCT_ONLY |
                            G_PARAM_STATIC_STRINGS);
 
+  /**
+   * HlpService:inactivity-timeout:
+   *
+   * An inactivity timeout (in ms), after which the service will automatically
+   * exit unless its hold count is greater than zero. Increase/Decrease the hold
+   * count by calling hlp_service_hold()/hlp_service_release().
+   *
+   * A timeout of zero means the service will never automatically exit.
+   *
+   * Since: 0.1.0
+   */
+  props[PROP_INACTIVITY_TIMEOUT] =
+      g_param_spec_uint ("inactivity-timeout", "Inactivity Timeout",
+                         "An inactivity timeout (in ms), after which the "
+                         "service will automatically exit.",
+                         0, G_MAXUINT, 0,
+                         G_PARAM_READWRITE |
+                         G_PARAM_STATIC_STRINGS);
+
   g_object_class_install_properties (object_class, G_N_ELEMENTS (props), props);
 }
 
@@ -221,6 +247,8 @@ hlp_service_dispose (GObject *object)
 
   g_clear_pointer (&priv->sigint_source, (GDestroyNotify) source_destroy_and_unref);
   g_clear_pointer (&priv->sigterm_source, (GDestroyNotify) source_destroy_and_unref);
+
+  cancel_inactivity_timeout (self);
 
   g_cancellable_cancel (priv->cancellable);
   g_clear_object (&priv->cancellable);
@@ -264,6 +292,9 @@ hlp_service_get_property (GObject    *object,
     case PROP_SERVICE_ID:
       g_value_set_string (value, priv->service_id);
       break;
+    case PROP_INACTIVITY_TIMEOUT:
+      g_value_set_uint (value, priv->inactivity_timeout_ms);
+      break;
     default:
       g_assert_not_reached ();
     }
@@ -303,6 +334,9 @@ hlp_service_set_property (GObject      *object,
       /* Construct only. */
       g_assert (priv->service_id == NULL);
       priv->service_id = g_value_dup_string (value);
+      break;
+    case PROP_INACTIVITY_TIMEOUT:
+      hlp_service_set_inactivity_timeout (self, g_value_get_uint (value));
       break;
     default:
       g_assert_not_reached ();
@@ -371,8 +405,13 @@ name_acquired_cb (GDBusConnection *connection,
                   const gchar     *name,
                   gpointer         user_data)
 {
+  HlpService *self = HLP_SERVICE (user_data);
+
   /* Notify systemd we’re ready. */
   sd_notify (0, "READY=1");
+
+  /* Potentially start a timeout to exiting due to inactivity. */
+  hlp_service_release (self);
 }
 
 static void
@@ -383,9 +422,66 @@ name_lost_cb (GDBusConnection *connection,
   HlpService *self = HLP_SERVICE (user_data);
   g_autoptr (GError) error = NULL;
 
+  hlp_service_release (self);
+
   g_set_error (&error, HLP_SERVICE_ERROR, HLP_SERVICE_ERROR_NAME_UNAVAILABLE,
                _("Lost D-Bus name ‘%s’; exiting."), name);
   hlp_service_exit (self, error, 0);
+}
+
+static gboolean
+inactivity_timeout_cb (gpointer user_data)
+{
+  HlpService *self = HLP_SERVICE (user_data);
+  HlpServicePrivate *priv = hlp_service_get_instance_private (self);
+
+  if (priv->hold_count == 0)
+    {
+      g_autoptr (GError) local_error = NULL;
+      g_set_error_literal (&local_error, HLP_SERVICE_ERROR, HLP_SERVICE_ERROR_TIMEOUT,
+                           _("Inactivity timeout reached; exiting."));
+      hlp_service_exit (self, local_error, 0);
+    }
+
+  return G_SOURCE_REMOVE;
+}
+
+static void
+cancel_inactivity_timeout (HlpService *self)
+{
+  HlpServicePrivate *priv = hlp_service_get_instance_private (self);
+
+  g_debug ("%s: Cancelling inactivity timeout (was %s)",
+           G_STRFUNC, (priv->inactivity_timeout_source != NULL) ? "set" : "unset");
+
+  g_clear_pointer (&priv->inactivity_timeout_source,
+                   (GDestroyNotify) source_destroy_and_unref);
+}
+
+static void
+maybe_schedule_inactivity_timeout (HlpService *self)
+{
+  HlpServicePrivate *priv = hlp_service_get_instance_private (self);
+
+  g_debug ("%s: Maybe scheduling inactivity timeout, hold_count: %u, inactivity_timeout_ms: %u",
+           G_STRFUNC, priv->hold_count, priv->inactivity_timeout_ms);
+
+  if (priv->hold_count == 0)
+    {
+      cancel_inactivity_timeout (self);
+
+      if (priv->inactivity_timeout_ms != 0)
+        {
+          g_debug ("%s: Scheduling inactivity timeout", G_STRFUNC);
+
+          if ((priv->inactivity_timeout_ms % 1000) == 0)
+            priv->inactivity_timeout_source = g_timeout_source_new_seconds (priv->inactivity_timeout_ms / 1000);
+          else
+            priv->inactivity_timeout_source = g_timeout_source_new (priv->inactivity_timeout_ms);
+          g_source_set_callback (priv->inactivity_timeout_source, inactivity_timeout_cb, self, NULL);
+          g_source_attach (priv->inactivity_timeout_source, priv->context);
+        }
+    }
 }
 
 static void
@@ -422,23 +518,27 @@ hlp_service_run (HlpService  *self,
                  char       **argv,
                  GError     **error)
 {
-  /* Command line parameters. */
-  g_autofree gchar *bus_address = NULL;
-
-  const GOptionEntry entries[] =
-    {
-      { "bus-address", 'a', G_OPTION_FLAG_NONE, G_OPTION_ARG_STRING, &bus_address,
-        N_("Address of the D-Bus daemon to connect to and own a name on"),
-        N_("ADDRESS") },
-      { NULL, },
-    };
-
   g_return_if_fail (HLP_IS_SERVICE (self));
   g_return_if_fail (argc > 0);
   g_return_if_fail (argv != NULL);
 
   HlpServicePrivate *priv = hlp_service_get_instance_private (self);
   HlpServiceClass *service_class = HLP_SERVICE_GET_CLASS (self);
+
+  /* Command line parameters. */
+  g_autofree gchar *bus_address = NULL;
+  gint64 inactivity_timeout_ms = priv->inactivity_timeout_ms;
+
+  const GOptionEntry entries[] =
+    {
+      { "bus-address", 'a', G_OPTION_FLAG_NONE, G_OPTION_ARG_STRING, &bus_address,
+        N_("Address of the D-Bus daemon to connect to and own a name on"),
+        N_("ADDRESS") },
+      { "inactivity-timeout", 't', G_OPTION_FLAG_NONE, G_OPTION_ARG_INT64, &inactivity_timeout_ms,
+        N_("Inactivity timeout to wait for before exiting (in milliseconds)"),
+        N_("MS") },
+      { NULL, },
+    };
 
   /* Localisation */
   setlocale (LC_ALL, "");
@@ -454,6 +554,8 @@ hlp_service_run (HlpService  *self,
                            _("This daemon must not be run as root."));
       return;
     }
+
+  hlp_service_hold (self);
 
   /* Set up signal handlers. */
   priv->sigint_source = g_unix_signal_source_new (SIGINT);
@@ -494,7 +596,23 @@ hlp_service_run (HlpService  *self,
     {
       g_set_error (error, HLP_SERVICE_ERROR, HLP_SERVICE_ERROR_INVALID_OPTIONS,
                    _("Option parsing failed: %s"), child_error->message);
+      hlp_service_release (self);
       return;
+    }
+
+  /* Sort out the inactivity timeout. Zero is the default, so ignore that so
+   * that subclasses can set their own defaults at construction time. */
+  if (inactivity_timeout_ms < 0 || inactivity_timeout_ms > G_MAXUINT)
+    {
+      g_set_error (error, HLP_SERVICE_ERROR, HLP_SERVICE_ERROR_INVALID_OPTIONS,
+                   _("Invalid inactivity timeout %" G_GINT64_FORMAT "ms."),
+                   inactivity_timeout_ms);
+      hlp_service_release (self);
+      return;
+    }
+  else if (inactivity_timeout_ms >= 0)
+    {
+      hlp_service_set_inactivity_timeout (self, inactivity_timeout_ms);
     }
 
   /* Connect to the bus. */
@@ -509,6 +627,7 @@ hlp_service_run (HlpService  *self,
     {
       g_set_error (error, HLP_SERVICE_ERROR, HLP_SERVICE_ERROR_NAME_UNAVAILABLE,
                    _("D-Bus unavailable: %s"), child_error->message);
+      hlp_service_release (self);
       return;
     }
 
@@ -533,6 +652,7 @@ hlp_service_run (HlpService  *self,
       g_set_error (error, HLP_SERVICE_ERROR, HLP_SERVICE_ERROR_NAME_UNAVAILABLE,
                    _("D-Bus bus ‘%s’ unavailable: %s"),
                    bus_address, child_error->message);
+      hlp_service_release (self);
       return;
     }
 
@@ -551,6 +671,7 @@ hlp_service_run (HlpService  *self,
   if (child_error != NULL)
     {
       g_propagate_error (error, child_error);
+      hlp_service_release (self);
       return;
     }
 
@@ -567,6 +688,8 @@ hlp_service_run (HlpService  *self,
   while (priv->run_error == NULL && !priv->run_exited)
     g_main_context_iteration (NULL, TRUE);
 
+  hlp_service_hold (self);
+
   /* Notify systemd we’re shutting down. */
   sd_notify (0, "STOPPING=1");
 
@@ -581,6 +704,8 @@ hlp_service_run (HlpService  *self,
   /* Shut down. */
   g_assert (service_class->shutdown != NULL);
   service_class->shutdown (self);
+
+  hlp_service_release (self);
 
   if (priv->run_error != NULL)
     {
@@ -683,3 +808,96 @@ hlp_service_get_exit_signal (HlpService *self)
   return priv->run_exit_signal;
 }
 
+/**
+ * hlp_service_get_inactivity_timeout:
+ * @self: a #HlpService
+ *
+ * Get the value of #HlpService:inactivity-timeout.
+ *
+ * Returns: inactivity timeout, in milliseconds, or zero if inactivity is ignored
+ * Since: 0.1.0
+ */
+guint
+hlp_service_get_inactivity_timeout (HlpService *self)
+{
+  g_return_val_if_fail (HLP_IS_SERVICE (self), 0);
+
+  HlpServicePrivate *priv = hlp_service_get_instance_private (self);
+  return priv->inactivity_timeout_ms;
+}
+
+/**
+ * hlp_service_set_inactivity_timeout:
+ * @self: a #HlpService
+ * @timeout_ms: inactivity timeout (in ms), or zero for no timeout
+ *
+ * Set the value of #HlpService:inactivity-timeout.
+ *
+ * Since: 0.1.0
+ */
+void
+hlp_service_set_inactivity_timeout (HlpService *self,
+                                    guint       timeout_ms)
+{
+  g_return_if_fail (HLP_IS_SERVICE (self));
+
+  HlpServicePrivate *priv = hlp_service_get_instance_private (self);
+
+  if (priv->inactivity_timeout_ms == timeout_ms)
+    return;
+
+  priv->inactivity_timeout_ms = timeout_ms;
+  g_object_notify (G_OBJECT (self), "inactivity-timeout");
+
+  maybe_schedule_inactivity_timeout (self);
+}
+
+/**
+ * hlp_service_hold:
+ * @self: a #HlpService
+ *
+ * Increase the hold count of the service, and hence prevent it from
+ * automatically exiting after the #HlpService:inactivity-timeout period expires
+ * with no activity.
+ *
+ * Call hlp_service_release() to decrement the hold count. Calls to these two
+ * methods must be paired; it is a programmer error not to.
+ *
+ * Since: 0.1.0
+ */
+void
+hlp_service_hold (HlpService *self)
+{
+  HlpServicePrivate *priv = hlp_service_get_instance_private (self);
+
+  g_return_if_fail (HLP_IS_SERVICE (self));
+  g_return_if_fail (priv->hold_count < G_MAXUINT);
+
+  priv->hold_count++;
+  cancel_inactivity_timeout (self);
+}
+
+/**
+ * hlp_service_release:
+ * @self: a #HlpService
+ *
+ * Decrease the hold count of the service, and hence potentially (if the hold
+ * count reaches zero) allow it to automatically exit after the
+ * #HlpService:inactivity-timeout period expires with no activity.
+ *
+ * Call hlp_service_hold() to increment the hold count. Calls to these two
+ * methods must be paired; it is a programmer error not to.
+ *
+ * Since: 0.1.0
+ */
+void
+hlp_service_release (HlpService *self)
+{
+  HlpServicePrivate *priv = hlp_service_get_instance_private (self);
+
+  g_return_if_fail (HLP_IS_SERVICE (self));
+  g_return_if_fail (priv->hold_count > 0);
+
+  priv->hold_count--;
+  maybe_schedule_inactivity_timeout (self);
+}
