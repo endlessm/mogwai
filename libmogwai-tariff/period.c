@@ -63,6 +63,11 @@ static void mwt_period_set_property (GObject      *object,
  * recurrence of the period on that day will be skipped. Recurrences on days
  * after the DST transition will happen at 01:00 to 02:00 in the new timezone.
  *
+ * For a DST transition where the clocks go backward by 1 hour at 02:00 on a
+ * certain day, the time span 01:00–02:00 will happen twice. Any recurrence of a
+ * period which spans 01:00 to 02:00 will happen on the first occurrence of the
+ * time span, and will not repeat during the second occurrence.
+ *
  * The #MwtPeriod class is immutable once loaded or constructed.
  *
  * Since: 0.1.0
