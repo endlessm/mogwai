@@ -180,6 +180,7 @@ mws_service_new (void)
   return g_object_new (MWS_TYPE_SERVICE,
                        "bus-type", G_BUS_TYPE_SYSTEM,
                        "service-id", "com.endlessm.MogwaiSchedule1",
+                       "inactivity-timeout", 30000  /* ms */,
                        "translation-domain", GETTEXT_PACKAGE,
                        "parameter-string", _("— schedule downloads to conserve bandwidth"),
                        "summary", _("Schedule large downloads from multiple "
