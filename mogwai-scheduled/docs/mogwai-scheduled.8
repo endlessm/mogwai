@@ -31,6 +31,11 @@ command line.
 Address of a D\-Bus message bus to connect to. This is intended for debugging
 use only. (Default: The system bus.)
 .\"
+.IP "\fB\-t\fP, \fB\-\-inactivity\-timeout=\fP"
+Inactivity timeout (in milliseconds) to wait before exiting the service if no
+scheduling requests have been made during that period. If set to \fB0\fP, the
+timeout is disabled and the service will run indefinitely. (Default: 30 seconds.)
+.\"
 .SH "ENVIRONMENT"
 .IX Header "ENVIRONMENT"
 .\"
@@ -96,5 +101,5 @@ Endless Mobile, Inc.
 .SH COPYRIGHT
 .IX Header "COPYRIGHT"
 .\"
-Copyright © 2017 Endless Mobile, Inc.
+Copyright © 2017, 2018 Endless Mobile, Inc.
 

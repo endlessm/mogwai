@@ -47,6 +47,12 @@ main (int   argc,
       if (g_error_matches (error,
                            HLP_SERVICE_ERROR, HLP_SERVICE_ERROR_SIGNALLED))
         raise (hlp_service_get_exit_signal (HLP_SERVICE (service)));
+      else if (g_error_matches (error,
+                                HLP_SERVICE_ERROR, HLP_SERVICE_ERROR_TIMEOUT))
+        {
+          g_message ("Exiting due to reaching inactivity timeout");
+          return 0;
+        }
 
       g_printerr ("%s: %s\n", argv[0], error->message);
       code = error->code;
