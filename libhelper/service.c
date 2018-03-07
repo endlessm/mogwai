@@ -76,8 +76,10 @@ typedef struct
   gboolean run_exited;
   int run_exit_signal;
 
-  gint sigint_id;
-  gint sigterm_id;
+  GMainContext *context;  /* (owned) */
+
+  GSource *sigint_source;  /* (owned) (nullable) */
+  GSource *sigterm_source;  /* (owned) (nullable) */
 } HlpServicePrivate;
 
 typedef enum
@@ -198,6 +200,17 @@ hlp_service_init (HlpService *self)
   HlpServicePrivate *priv = hlp_service_get_instance_private (self);
 
   priv->cancellable = g_cancellable_new ();
+  priv->context = g_main_context_ref_thread_default ();
+}
+
+static void
+source_destroy_and_unref (GSource *source)
+{
+  if (source != NULL)
+    {
+      g_source_destroy (source);
+      g_source_unref (source);
+    }
 }
 
 static void
@@ -206,17 +219,8 @@ hlp_service_dispose (GObject *object)
   HlpService *self = HLP_SERVICE (object);
   HlpServicePrivate *priv = hlp_service_get_instance_private (self);
 
-  if (priv->sigint_id != 0)
-    {
-      g_source_remove (priv->sigint_id);
-      priv->sigint_id = 0;
-    }
-
-  if (priv->sigterm_id != 0)
-    {
-      g_source_remove (priv->sigterm_id);
-      priv->sigterm_id = 0;
-    }
+  g_clear_pointer (&priv->sigint_source, (GDestroyNotify) source_destroy_and_unref);
+  g_clear_pointer (&priv->sigterm_source, (GDestroyNotify) source_destroy_and_unref);
 
   g_cancellable_cancel (priv->cancellable);
   g_clear_object (&priv->cancellable);
@@ -228,6 +232,7 @@ hlp_service_dispose (GObject *object)
   g_clear_pointer (&priv->service_id, g_free);
   g_clear_error (&priv->run_error);
   g_clear_object (&priv->connection);
+  g_clear_pointer (&priv->context, g_main_context_unref);
 
   /* Chain up to the parent class */
   G_OBJECT_CLASS (hlp_service_parent_class)->dispose (object);
@@ -343,7 +348,7 @@ signal_sigint_cb (gpointer user_data)
 
   /* Remove the signal handler so we can re-raise it later without entering a
    * loop. */
-  priv->sigint_id = 0;
+  g_clear_pointer (&priv->sigint_source, (GDestroyNotify) source_destroy_and_unref);
   return G_SOURCE_REMOVE;
 }
 
@@ -357,7 +362,7 @@ signal_sigterm_cb (gpointer user_data)
 
   /* Remove the signal handler so we can re-raise it later without entering a
    * loop. */
-  priv->sigterm_id = 0;
+  g_clear_pointer (&priv->sigterm_source, (GDestroyNotify) source_destroy_and_unref);
   return G_SOURCE_REMOVE;
 }
 
@@ -451,8 +456,12 @@ hlp_service_run (HlpService  *self,
     }
 
   /* Set up signal handlers. */
-  priv->sigint_id = g_unix_signal_add (SIGINT, signal_sigint_cb, self);
-  priv->sigterm_id = g_unix_signal_add (SIGTERM, signal_sigterm_cb, self);
+  priv->sigint_source = g_unix_signal_source_new (SIGINT);
+  g_source_set_callback (priv->sigint_source, signal_sigint_cb, self, NULL);
+  g_source_attach (priv->sigint_source, priv->context);
+  priv->sigterm_source = g_unix_signal_source_new (SIGTERM);
+  g_source_set_callback (priv->sigterm_source, signal_sigterm_cb, self, NULL);
+  g_source_attach (priv->sigterm_source, priv->context);
 
   /* Handle command line parameters. */
   g_autoptr (GOptionContext) context = g_option_context_new (priv->parameter_string);
