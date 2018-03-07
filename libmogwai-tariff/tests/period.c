@@ -513,7 +513,10 @@ test_period_contains_time (void)
       /* Test what gnome-control-center does, which is to have two periods: one
        * covers all time (no need to test that, as it doesn’t recur), and the
        * other covers 22:00–06:00 at the start of the Unix time period in 1970,
-       * and recurs every day. Test that works, and doesn’t perform badly. */
+       * and recurs every day. Test that works, and doesn’t perform badly. (This
+       * is an implicit performance test, in that the test shouldn’t take
+       * forever to run, rather than an explicit one counting loop cycles. We’re
+       * not *that* concerned about performance. */
       { 1970, 1, 1, 22, 0, 0.0, "Z", 1970, 1, 2, 6, 0, 0.0, "Z",
         MWT_PERIOD_REPEAT_DAY, 1,
         2018, 2, 1, 21, 59, 59.99, "Z",
