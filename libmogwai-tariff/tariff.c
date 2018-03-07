@@ -535,7 +535,7 @@ transition_data_sort (const TransitionData *a,
    * due to the sort order we guarantee on the latter. */
   if (a->period_index > b->period_index)
     return -1;
-  else if(a->period_index < b->period_index)
+  else if (a->period_index < b->period_index)
     return 1;
 
   g_assert_not_reached ();
