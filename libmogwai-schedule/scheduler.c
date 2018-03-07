@@ -771,7 +771,10 @@ mws_scheduler_reschedule (MwsScheduler *self)
                                                                 NULL, NULL);
 
               g_autofree gchar *next_transition_str = NULL;
-              next_transition_str = (next_transition != NULL) ? g_date_time_format (next_transition, "%FT%T%:::z") : g_strdup ("never");
+              if (next_transition != NULL)
+                next_transition_str = g_date_time_format (next_transition, "%FT%T%:::z");
+              else
+                next_transition_str = g_strdup ("never");
               g_debug ("%s: Connection ‘%s’ next transition is %s",
                        G_STRFUNC, all_connection_ids[i], next_transition_str);
 
