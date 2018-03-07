@@ -54,9 +54,10 @@ static void mwt_tariff_set_property (GObject      *object,
  *
  * The periods in a tariff must be non-overlapping, in the sense that if a
  * period intersects another period at all, it must be entirely contained
- * within that period. The properties which apply to a given date/time are
- * selected from the shortest period which contains that date/time — see
- * mwt_tariff_lookup_period().
+ * within that period. Put another way, all pairs of periods are either
+ * disjoint, or one strictly contains the other. The properties which apply to a
+ * given date/time are selected from the shortest period which contains that
+ * date/time — see mwt_tariff_lookup_period().
  *
  * The valid relative positions of any two periods are as follows, where the
  * first line gives the first period (A), and all subsequent lines are the valid
