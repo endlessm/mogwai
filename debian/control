@@ -5,12 +5,14 @@ Maintainer: Philip Withnall <withnall@endlessm.com>
 Standards-Version: 4.1.2
 Build-Depends:
  debhelper (>= 10),
+ dh-python,
  dh-systemd,
  libglib2.0-dev (>= 2.54.0),
  libnm-dev (>= 1.8.0),
  libsoup2.4-dev (>= 2.42.0),
  libsystemd-dev,
  meson,
+ python3-dbusmock,
 
 Package: mogwai-scheduled
 Section: misc
@@ -23,6 +25,20 @@ Depends:
 Description: Download Scheduler Daemon
  This package contains a download scheduler for saving bandwidth on metered
  connections.
+
+Package: mogwai-scheduled-tests
+Section: misc
+Architecture: any
+Depends:
+ mogwai-scheduled (= ${binary:Version}),
+ ${misc:Depends},
+ ${python3:Depends},
+ ${shlibs:Depends},
+Description: Download Scheduler Daemon - tests
+ This package contains a download scheduler for saving bandwidth on metered
+ connections.
+ .
+ This package contains unit tests for the scheduling daemon.
 
 Package: mogwai-schedule-tools
 Section: misc

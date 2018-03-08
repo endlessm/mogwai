@@ -17,4 +17,4 @@ override_dh_missing:
 	dh_missing --fail-missing
 
 %:
-	dh $@ --with systemd --parallel
+	dh $@ --with python3,systemd --parallel
