@@ -17,3 +17,5 @@ executable('mogwai-tariff-' + libmogwai_tariff_api_version,
 
 # Documentation
 install_man('docs/mogwai-tariff.8')
+
+subdir('tests')
