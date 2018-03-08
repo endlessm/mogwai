@@ -45,6 +45,10 @@ static void mws_service_startup_finish (HlpService    *service,
                                         GError       **error);
 static void mws_service_shutdown (HlpService *service);
 
+static void notify_busy_cb (GObject    *obj,
+                            GParamSpec *pspec,
+                            gpointer    user_data);
+
 /**
  * MwsService:
  *
@@ -61,6 +65,8 @@ struct _MwsService
   MwsScheduleService *schedule_service;  /* (owned) */
 
   GCancellable *cancellable;  /* (owned) */
+
+  gboolean busy;
 };
 
 G_DEFINE_TYPE (MwsService, mws_service, HLP_TYPE_SERVICE)
@@ -93,6 +99,9 @@ mws_service_dispose (GObject *object)
 
   g_cancellable_cancel (self->cancellable);
   g_clear_object (&self->cancellable);
+
+  if (self->schedule_service != NULL)
+    g_signal_handlers_disconnect_by_func (self->schedule_service, notify_busy_cb, self);
 
   g_clear_object (&self->schedule_service);
   g_clear_object (&self->scheduler);
@@ -142,6 +151,9 @@ connection_monitor_new_cb (GObject      *source_object,
   self->schedule_service = mws_schedule_service_new (connection,
                                                      "/com/endlessm/DownloadManager1",
                                                      self->scheduler);
+  g_signal_connect (self->schedule_service, "notify::busy",
+                    (GCallback) notify_busy_cb, self);
+  notify_busy_cb (G_OBJECT (self->schedule_service), NULL, self);
 
   if (!mws_schedule_service_register (self->schedule_service, &local_error))
     g_task_return_error (task, g_steal_pointer (&local_error));
@@ -155,6 +167,27 @@ mws_service_startup_finish (HlpService    *service,
                             GError       **error)
 {
   g_task_propagate_boolean (G_TASK (result), error);
+}
+
+static void
+notify_busy_cb (GObject    *obj,
+                GParamSpec *pspec,
+                gpointer    user_data)
+{
+  MwsService *self = MWS_SERVICE (user_data);
+
+  gboolean was_busy = self->busy;
+  gboolean now_busy = mws_schedule_service_get_busy (self->schedule_service);
+
+  g_debug ("%s: was_busy: %s, now_busy: %s",
+           G_STRFUNC, was_busy ? "yes" : "no", now_busy ? "yes" : "no");
+
+  if (was_busy && !now_busy)
+    hlp_service_release (HLP_SERVICE (self));
+  else if (!was_busy && now_busy)
+    hlp_service_hold (HLP_SERVICE (self));
+
+  self->busy = now_busy;
 }
 
 static void
