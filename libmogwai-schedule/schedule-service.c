@@ -181,6 +181,7 @@ typedef enum
   PROP_CONNECTION = 1,
   PROP_OBJECT_PATH,
   PROP_SCHEDULER,
+  PROP_BUSY,
 } MwsScheduleServiceProperty;
 
 G_DEFINE_TYPE (MwsScheduleService, mws_schedule_service, G_TYPE_OBJECT)
@@ -189,7 +190,7 @@ static void
 mws_schedule_service_class_init (MwsScheduleServiceClass *klass)
 {
   GObjectClass *object_class = (GObjectClass *) klass;
-  GParamSpec *props[PROP_SCHEDULER + 1] = { NULL, };
+  GParamSpec *props[PROP_BUSY + 1] = { NULL, };
 
   object_class->constructed = mws_schedule_service_constructed;
   object_class->dispose = mws_schedule_service_dispose;
@@ -241,6 +242,21 @@ mws_schedule_service_class_init (MwsScheduleServiceClass *klass)
                            G_PARAM_READWRITE |
                            G_PARAM_CONSTRUCT_ONLY |
                            G_PARAM_STATIC_STRINGS);
+
+  /**
+   * MwsScheduleService:busy:
+   *
+   * %TRUE if the D-Bus API is busy; for example if there are currently any
+   * schedule entries exposed on the bus.
+   *
+   * Since: 0.1.0
+   */
+  props[PROP_BUSY] =
+      g_param_spec_boolean ("busy", "Busy",
+                            "%TRUE if the D-Bus API is busy.",
+                            FALSE,
+                            G_PARAM_READABLE |
+                            G_PARAM_STATIC_STRINGS);
 
   g_object_class_install_properties (object_class, G_N_ELEMENTS (props), props);
 
@@ -347,6 +363,9 @@ mws_schedule_service_get_property (GObject    *object,
     case PROP_SCHEDULER:
       g_value_set_object (value, self->scheduler);
       break;
+    case PROP_BUSY:
+      g_value_set_boolean (value, mws_schedule_service_get_busy (self));
+      break;
     default:
       g_assert_not_reached ();
     }
@@ -387,6 +406,8 @@ mws_schedule_service_set_property (GObject      *object,
 
       break;
     }
+    case PROP_BUSY:
+      /* Read only. Fall through. */
     default:
       g_assert_not_reached ();
     }
@@ -438,6 +459,9 @@ entries_changed_cb (MwsScheduler *scheduler,
       g_signal_connect (entry, "notify",
                         (GCallback) entry_notify_cb, self);
     }
+
+  /* This will potentially have changed. */
+  g_object_notify (G_OBJECT (self), "busy");
 }
 
 static void
@@ -581,6 +605,9 @@ mws_schedule_service_register (MwsScheduleService  *self,
 
   self->entry_subtree_id = id;
 
+  /* This has potentially changed. */
+  g_object_notify (G_OBJECT (self), "busy");
+
   return TRUE;
 }
 
@@ -602,6 +629,9 @@ mws_schedule_service_unregister (MwsScheduleService *self)
   g_dbus_connection_unregister_subtree (self->connection,
                                         self->entry_subtree_id);
   self->entry_subtree_id = 0;
+
+  /* This has potentially changed. */
+  g_object_notify (G_OBJECT (self), "busy");
 }
 
 static gchar **
@@ -1216,4 +1246,22 @@ mws_schedule_service_new (GDBusConnection *connection,
                        "object-path", object_path,
                        "scheduler", scheduler,
                        NULL);
+}
+
+/**
+ * mws_schedule_service_get_busy:
+ * @self: a #MwsScheduleService
+ *
+ * Get the value of #MwsScheduleService:busy.
+ *
+ * Returns: %TRUE if the service is busy, %FALSE otherwise
+ * Since: 0.1.0
+ */
+gboolean
+mws_schedule_service_get_busy (MwsScheduleService *self)
+{
+  g_return_val_if_fail (MWS_IS_SCHEDULE_SERVICE (self), FALSE);
+
+  GHashTable *entries = mws_scheduler_get_entries (self->scheduler);
+  return (self->entry_subtree_id != 0 && g_hash_table_size (entries) > 0);
 }
