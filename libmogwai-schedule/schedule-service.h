@@ -41,4 +41,6 @@ gboolean mws_schedule_service_register   (MwsScheduleService  *self,
                                           GError             **error);
 void     mws_schedule_service_unregister (MwsScheduleService  *self);
 
+gboolean mws_schedule_service_get_busy   (MwsScheduleService  *self);
+
 G_END_DECLS
