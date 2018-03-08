@@ -183,3 +183,18 @@ Description: Download Scheduler Tariff Tools
  connections.
  .
  This package contains tools for interacting with network connection tariffs.
+
+Package: mogwai-tariff-tools-tests
+Section: misc
+Architecture: any
+Depends:
+ mogwai-tariff-tools (= ${binary:Version}),
+ ${misc:Depends},
+ ${python3:Depends},
+ ${shlibs:Depends},
+Description: Download Scheduler Tariff Tools - tests
+ This package contains a download scheduler for saving bandwidth on metered
+ connections.
+ .
+ This package contains unit tests for the tools for interacting with network
+ connection tariffs.

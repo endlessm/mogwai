@@ -7,7 +7,4 @@ Depends:
  libmogwai-tariff-0-tests,
  mogwai-schedule-tools-tests,
  mogwai-scheduled-tests,
-
-Tests: mogwai-tariff
-Depends:
- mogwai-tariff-tools,
+ mogwai-tariff-tools-tests,
