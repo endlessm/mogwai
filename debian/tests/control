@@ -6,6 +6,7 @@ Depends:
  libmogwai-schedule-client-0-tests,
  libmogwai-tariff-0-tests,
  mogwai-schedule-tools-tests,
+ mogwai-scheduled-tests,
 
 Tests: mogwai-tariff
 Depends:

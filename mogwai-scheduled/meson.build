@@ -57,3 +57,5 @@ configure_file(
 
 # Documentation
 install_man('docs/mogwai-scheduled.8')
+
+subdir('tests')
