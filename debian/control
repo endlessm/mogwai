@@ -58,6 +58,7 @@ Package: mogwai-schedule-tools-tests
 Section: misc
 Architecture: any
 Depends:
+ mogwai-schedule-tools (= ${binary:Version}),
  ${misc:Depends},
  ${shlibs:Depends},
 Description: Download Scheduler Tools - tests
