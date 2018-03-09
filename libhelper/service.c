@@ -454,12 +454,8 @@ cancel_inactivity_timeout (HlpService *self)
   g_debug ("%s: Cancelling inactivity timeout (was %s)",
            G_STRFUNC, (priv->inactivity_timeout_source != NULL) ? "set" : "unset");
 
-  if (priv->inactivity_timeout_source != NULL)
-    {
-      g_source_destroy (priv->inactivity_timeout_source);
-      g_source_unref (priv->inactivity_timeout_source);
-      priv->inactivity_timeout_source = NULL;
-    }
+  g_clear_pointer (&priv->inactivity_timeout_source,
+                   (GDestroyNotify) source_destroy_and_unref);
 }
 
 static void
