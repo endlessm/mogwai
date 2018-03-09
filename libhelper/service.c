@@ -230,24 +230,23 @@ hlp_service_init (HlpService *self)
 }
 
 static void
+source_destroy_and_unref (GSource *source)
+{
+  if (source != NULL)
+    {
+      g_source_destroy (source);
+      g_source_unref (source);
+    }
+}
+
+static void
 hlp_service_dispose (GObject *object)
 {
   HlpService *self = HLP_SERVICE (object);
   HlpServicePrivate *priv = hlp_service_get_instance_private (self);
 
-  if (priv->sigint_source != NULL)
-    {
-      g_source_destroy (priv->sigint_source);
-      g_source_unref (priv->sigint_source);
-      priv->sigint_source = NULL;
-    }
-
-  if (priv->sigterm_source != NULL)
-    {
-      g_source_destroy (priv->sigterm_source);
-      g_source_unref (priv->sigterm_source);
-      priv->sigterm_source = NULL;
-    }
+  g_clear_pointer (&priv->sigint_source, (GDestroyNotify) source_destroy_and_unref);
+  g_clear_pointer (&priv->sigterm_source, (GDestroyNotify) source_destroy_and_unref);
 
   cancel_inactivity_timeout (self);
 
@@ -383,12 +382,7 @@ signal_sigint_cb (gpointer user_data)
 
   /* Remove the signal handler so we can re-raise it later without entering a
    * loop. */
-  if (priv->sigint_source != NULL)
-    {
-      g_source_destroy (priv->sigint_source);
-      g_source_unref (priv->sigint_source);
-      priv->sigint_source = NULL;
-    }
+  g_clear_pointer (&priv->sigint_source, (GDestroyNotify) source_destroy_and_unref);
   return G_SOURCE_REMOVE;
 }
 
@@ -402,12 +396,7 @@ signal_sigterm_cb (gpointer user_data)
 
   /* Remove the signal handler so we can re-raise it later without entering a
    * loop. */
-  if (priv->sigterm_source != NULL)
-    {
-      g_source_destroy (priv->sigterm_source);
-      g_source_unref (priv->sigterm_source);
-      priv->sigterm_source = NULL;
-    }
+  g_clear_pointer (&priv->sigterm_source, (GDestroyNotify) source_destroy_and_unref);
   return G_SOURCE_REMOVE;
 }
 
