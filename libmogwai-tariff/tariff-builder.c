@@ -232,15 +232,15 @@ static GVariant *
 mwt_tariff_builder_build_tariff_variant (const gchar *name,
                                          MwtTariff   *tariff)
 {
-  const guint16 format_version = 1;
+  const guint16 format_version = 2;
   const gchar *format_magic = "Mogwai tariff";
-  g_auto(GVariantBuilder) builder = G_VARIANT_BUILDER_INIT (G_VARIANT_TYPE ("(sa(ttqut))"));
+  g_auto(GVariantBuilder) builder = G_VARIANT_BUILDER_INIT (G_VARIANT_TYPE ("(sa(ttssqut))"));
 
   g_variant_builder_add (&builder, "s", name);
 
   /* Periods. mwt_tariff_get_periods() guarantees it’s in order. */
   GPtrArray *periods = mwt_tariff_get_periods (tariff);
-  g_variant_builder_open (&builder, G_VARIANT_TYPE ("a(ttqut)"));
+  g_variant_builder_open (&builder, G_VARIANT_TYPE ("a(ttssqut)"));
 
   for (gsize i = 0; i < periods->len; i++)
     {
@@ -249,10 +249,14 @@ mwt_tariff_builder_build_tariff_variant (const gchar *name,
       GDateTime *end = mwt_period_get_end (period);
       guint64 start_unix = g_date_time_to_unix (start);
       guint64 end_unix = g_date_time_to_unix (end);
+      const gchar *start_timezone = g_date_time_get_timezone_abbreviation (start);
+      const gchar *end_timezone = g_date_time_get_timezone_abbreviation (end);
 
-      g_variant_builder_open (&builder, G_VARIANT_TYPE ("(ttqut)"));
+      g_variant_builder_open (&builder, G_VARIANT_TYPE ("(ttssqut)"));
       g_variant_builder_add (&builder, "t", start_unix);
       g_variant_builder_add (&builder, "t", end_unix);
+      g_variant_builder_add (&builder, "s", start_timezone);
+      g_variant_builder_add (&builder, "s", end_timezone);
       g_variant_builder_add (&builder, "q", (guint16) mwt_period_get_repeat_type (period));
       g_variant_builder_add (&builder, "u", (guint32) mwt_period_get_repeat_period (period));
       g_variant_builder_add (&builder, "t", mwt_period_get_capacity_limit (period));

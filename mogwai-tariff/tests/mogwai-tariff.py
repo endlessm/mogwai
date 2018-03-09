@@ -133,6 +133,30 @@ class TestMogwaiTariff(unittest.TestCase):
 
         os.remove('tariff1')
 
+    def test_timezones(self):
+        """Test building and dumping a tariff with non-UTC timezones."""
+        subprocess.check_call([self.__mogwai_tariff, 'build', 'tz', 'tz',
+                               '2017-01-01T00:00:00-01:00',
+                               '2018-01-01T00:00:00+00:30',
+                               'none', '0', 'unlimited'],
+                              timeout=self.timeout_seconds,
+                              stderr=subprocess.STDOUT)
+        self.assertTrue(os.path.exists('tz'))
+
+        out = subprocess.check_output([self.__mogwai_tariff, 'dump', 'tz'],
+                                      timeout=self.timeout_seconds,
+                                      stderr=subprocess.STDOUT)
+        out = out.decode('utf-8').strip()
+        self.assertIn(
+            'Tariff ‘tz’\n'
+            '-----------\n'
+            '\n'
+            'Period 2017-01-01T00:00:00-01 – 2018-01-01T00:00:00+00:30:\n'
+            ' • Never repeats\n'
+            ' • Capacity limit: unlimited', out)
+
+        os.remove('tz')
+
 
 if __name__ == '__main__':
     unittest.main(testRunner=taptestrunner.TAPTestRunner())
