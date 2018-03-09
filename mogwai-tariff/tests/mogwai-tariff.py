@@ -77,7 +77,7 @@ class TestMogwaiTariff(unittest.TestCase):
             '\n'
             'Period 2017-01-01T00:00:00+00 – 2018-01-01T00:00:00+00:\n'
             ' • Repeats every 2 years\n'
-            ' • Capacity limit: 15.0 MB (15,000,000 bytes)', out)
+            ' • Capacity limit: 15.0 MB (15000000 bytes)', out)
 
         # Lookup a time in the tariff.
         out = subprocess.check_output([self.__mogwai_tariff, 'lookup',
@@ -88,7 +88,7 @@ class TestMogwaiTariff(unittest.TestCase):
         self.assertIn(
             'Period 2017-01-01T00:00:00+00 – 2018-01-01T00:00:00+00:\n'
             ' • Repeats every 2 years\n'
-            ' • Capacity limit: 15.0 MB (15,000,000 bytes)', out)
+            ' • Capacity limit: 15.0 MB (15000000 bytes)', out)
 
         # This lookup should fail because the time is outside a period in the
         # tariff.
@@ -129,7 +129,7 @@ class TestMogwaiTariff(unittest.TestCase):
             ' • Capacity limit: unlimited\n'
             'Period 2017-01-02T00:00:00+00 – 2017-01-02T05:00:00+00:\n'
             ' • Repeats every 1 day\n'
-            ' • Capacity limit: 2.0 MB (2,000,000 bytes)', out)
+            ' • Capacity limit: 2.0 MB (2000000 bytes)', out)
 
         os.remove('tariff1')
 
