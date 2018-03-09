@@ -96,6 +96,11 @@ endforeach
 
 enable_installed_tests = get_option('installed_tests')
 test_template = files('template.test.in')
+test_env = [
+  'G_DEBUG=gc-friendly',
+  'MALLOC_CHECK_=2',
+  'LANG=C.UTF-8',
+]
 
 subdir('libhelper')
 subdir('libmogwai-tariff')
