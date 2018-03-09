@@ -213,7 +213,7 @@ dump_tariff (MwtTariff *tariff,
 
   if (!use_colour)
     {
-      for (gsize i = 0; i < strlen (title); i++)
+      for (gsize i = 0; i < g_utf8_strlen (title, -1); i++)
         g_string_append_c (str, '-');
       g_string_append_c (str, '\n');
     }
