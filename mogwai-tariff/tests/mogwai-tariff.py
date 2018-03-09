@@ -73,7 +73,7 @@ class TestMogwaiTariff(unittest.TestCase):
         out = out.decode('utf-8').strip()
         self.assertIn(
             'Tariff ‘tariff0’\n'
-            '--------------------\n'
+            '----------------\n'
             '\n'
             'Period 2017-01-01T00:00:00+00 – 2018-01-01T00:00:00+00:\n'
             ' • Repeats every 2 years\n'
@@ -122,7 +122,7 @@ class TestMogwaiTariff(unittest.TestCase):
         out = out.decode('utf-8').strip()
         self.assertIn(
             'Tariff ‘tariff1’\n'
-            '--------------------\n'
+            '----------------\n'
             '\n'
             'Period 2017-01-01T00:00:00+00 – 2018-01-01T00:00:00+00:\n'
             ' • Never repeats\n'
