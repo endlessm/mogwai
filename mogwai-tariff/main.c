@@ -280,13 +280,10 @@ static GDateTime *
 date_time_from_string (const gchar  *str,
                        GError      **error)
 {
-  /* FIXME: When we can depend on GLib 2.56, we can use
-   * g_date_time_new_from_iso8601(). */
-  GTimeVal tv = { 0, };
   g_autoptr(GDateTime) date_time = NULL;
+  date_time = g_date_time_new_from_iso8601 (str, NULL);
 
-  if (!g_time_val_from_iso8601 (str, &tv) ||
-      (date_time = g_date_time_new_from_timeval_utc (&tv)) == NULL)
+  if (date_time == NULL)
     {
       g_set_error (error, MWT_CLIENT_ERROR, MWT_CLIENT_ERROR_INVALID_OPTIONS,
                    _("Invalid ISO 8601 date/time ‘%s’."), str);
