@@ -172,6 +172,9 @@ struct _MwsScheduleService
   /* Hold the watch IDs of all peers who have added entries at some point. */
   GPtrArray *peer_watch_ids;  /* (owned) */
 
+  /* Cache of peer credentials (currently only the executable path of each peer). */
+  GHashTable *peer_credentials;  /* (owned) (element-type utf8 filename) */
+
   /* Used to cancel any pending operations when the object is unregistered. */
   GCancellable *cancellable;  /* (owned) */
 
@@ -282,6 +285,8 @@ mws_schedule_service_init (MwsScheduleService *self)
 {
   self->cancellable = g_cancellable_new ();
   self->peer_watch_ids = g_ptr_array_new_with_free_func (watcher_id_free);
+  self->peer_credentials = g_hash_table_new_full (g_str_hash, g_str_equal,
+                                                  g_free, g_free);
 }
 
 static GPtrArray *
@@ -336,6 +341,7 @@ mws_schedule_service_dispose (GObject *object)
 
   g_clear_object (&self->scheduler);
 
+  g_clear_pointer (&self->peer_credentials, g_hash_table_unref);
   g_clear_pointer (&self->peer_watch_ids, g_ptr_array_unref);
 
   g_clear_object (&self->connection);
@@ -799,6 +805,9 @@ peer_vanished_cb (GDBusConnection *connection,
       g_debug ("Failed to remove schedule entries for owner ‘%s’: %s",
                name, local_error->message);
     }
+
+  g_debug ("%s: Removing peer credentials for ‘%s’ from cache", G_STRFUNC, name);
+  g_hash_table_remove (self->peer_credentials, name);
 }
 
 /* Main handler for incoming D-Bus method calls. */
@@ -1034,6 +1043,121 @@ mws_schedule_service_entry_remove (MwsScheduleService    *self,
     }
 }
 
+/* An async function for getting credentials for D-Bus peers, either by querying
+ * the bus, or by getting them from a cache. */
+static void get_peer_credentials_cb (GObject      *obj,
+                                     GAsyncResult *result,
+                                     gpointer      user_data);
+
+static void
+get_peer_credentials_async (MwsScheduleService  *self,
+                            const gchar         *sender,
+                            GCancellable        *cancellable,
+                            GAsyncReadyCallback  callback,
+                            gpointer             user_data)
+{
+  g_autoptr(GTask) task = g_task_new (self, cancellable, callback, user_data);
+  g_task_set_source_tag (task, get_peer_credentials_async);
+  g_task_set_task_data (task, g_strdup (sender), g_free);
+
+  /* Look up information about the sender so that we can (for example)
+   * prioritise downloads by sender. */
+  g_debug ("%s: Querying credentials for peer ‘%s’", G_STRFUNC, sender);
+  const gchar *peer_path = g_hash_table_lookup (self->peer_credentials, sender);
+
+  if (peer_path != NULL)
+    {
+      g_debug ("%s: Found credentials in cache; path is ‘%s’",
+               G_STRFUNC, peer_path);
+      g_task_return_pointer (task, g_strdup (peer_path), g_free);
+    }
+  else
+    {
+      g_dbus_connection_call (self->connection, "org.freedesktop.DBus", "/",
+                              "org.freedesktop.DBus", "GetConnectionCredentials",
+                              g_variant_new ("(s)", sender),
+                              G_VARIANT_TYPE ("a{sv}"),
+                              G_DBUS_CALL_FLAGS_NONE,
+                              -1  /* default timeout */,
+                              cancellable,
+                              get_peer_credentials_cb, g_steal_pointer (&task));
+    }
+}
+
+static void
+get_peer_credentials_cb (GObject      *obj,
+                         GAsyncResult *result,
+                         gpointer      user_data)
+{
+  g_autoptr(GTask) task = G_TASK (user_data);
+  MwsScheduleService *self = MWS_SCHEDULE_SERVICE (g_task_get_source_object (task));
+  GDBusConnection *connection = G_DBUS_CONNECTION (obj);
+  const gchar *sender = g_task_get_task_data (task);
+  g_autoptr(GError) local_error = NULL;
+
+  /* Finish looking up the sender. */
+  g_autoptr(GVariant) credentials = NULL;
+  credentials = g_dbus_connection_call_finish (connection, result, &local_error);
+
+  if (credentials == NULL)
+    {
+      g_task_return_error (task, g_steal_pointer (&local_error));
+      return;
+    }
+
+  /* From the credentials information from D-Bus, we can get the process ID,
+   * and then look up the process name. Note that this is racy (the process
+   * ID may get recycled between GetConnectionCredentials() returning and us
+   * querying the kernel for the process name), but there’s nothing we can
+   * do about that. The correct approach is to use an LSM label as returned
+   * by GetConnectionCredentials(), but EOS doesn’t support any LSM.
+   * We deliberately look at /proc/$pid/exe, rather than /proc/$pid/cmdline,
+   * since processes can modify the latter at runtime. */
+  guint process_id;
+
+  if (!g_variant_lookup (credentials, "ProcessID", "u", &process_id))
+    {
+      g_task_return_new_error (task, MWS_SCHEDULER_ERROR,
+                               MWS_SCHEDULER_ERROR_IDENTIFYING_PEER,
+                               _("Process ID for peer ‘%s’ could not be determined"),
+                               sender);
+      return;
+    }
+
+  g_autofree gchar *pid_str = g_strdup_printf ("%u", process_id);
+  g_autofree gchar *proc_pid_exe = g_build_filename ("/proc", pid_str, "exe", NULL);
+  char sender_path[PATH_MAX];
+
+  if (realpath (proc_pid_exe, sender_path) == NULL)
+    {
+      g_task_return_new_error (task, MWS_SCHEDULER_ERROR,
+                               MWS_SCHEDULER_ERROR_IDENTIFYING_PEER,
+                               _("Executable path for peer ‘%s’ (process ID: %s) "
+                                 "could not be determined"),
+                               sender, pid_str);
+      return;
+    }
+
+  g_debug ("%s: Got credentials from D-Bus daemon; path is ‘%s’",
+           G_STRFUNC, sender_path);
+
+  g_hash_table_replace (self->peer_credentials,
+                        g_strdup (sender), g_strdup (sender_path));
+
+  g_task_return_pointer (task, g_strdup (sender_path), g_free);
+}
+
+static gchar *
+get_peer_credentials_finish (MwsScheduleService  *self,
+                             GAsyncResult        *result,
+                             GError             **error)
+{
+  g_return_val_if_fail (g_task_is_valid (result, self), NULL);
+  g_return_val_if_fail (g_async_result_is_tagged (result, get_peer_credentials_async), NULL);
+
+  return g_task_propagate_pointer (G_TASK (result), error);
+}
+
 typedef void (*SchedulerMethodCallFunc) (MwsScheduleService    *self,
                                          GDBusConnection       *connection,
                                          const gchar           *sender,
@@ -1169,6 +1293,36 @@ mws_schedule_service_scheduler_properties_get_all (MwsScheduleService    *self,
                                            interface_name);
 }
 
+typedef struct
+{
+  GDBusMethodInvocation *invocation;  /* (owned) */
+  MwsScheduleEntry *entry;  /* (owned) */
+} ScheduleData;
+
+static ScheduleData *
+schedule_data_new (GDBusMethodInvocation *invocation,
+                   MwsScheduleEntry      *entry)
+{
+  ScheduleData *data = g_new0 (ScheduleData, 1);
+  data->invocation = g_object_ref (invocation);
+  data->entry = g_object_ref (entry);
+  return data;
+}
+
+static void
+schedule_data_free (ScheduleData *data)
+{
+  g_clear_object (&data->invocation);
+  g_clear_object (&data->entry);
+  g_free (data);
+}
+
+G_DEFINE_AUTOPTR_CLEANUP_FUNC (ScheduleData, schedule_data_free)
+
+static void schedule_cb (GObject      *obj,
+                         GAsyncResult *result,
+                         gpointer      user_data);
+
 static void
 mws_schedule_service_scheduler_schedule (MwsScheduleService    *self,
                                          GDBusConnection       *connection,
@@ -1199,6 +1353,35 @@ mws_schedule_service_scheduler_schedule (MwsScheduleService    *self,
                                              G_DBUS_ERROR_INVALID_ARGS,
                                              _("Invalid schedule entry parameters: %s"),
                                              local_error->message);
+      return;
+    }
+
+  /* Look up information about the sender so that we can (for example)
+   * prioritise downloads by sender. */
+  get_peer_credentials_async (self, sender, self->cancellable, schedule_cb,
+                              schedule_data_new (invocation, entry));
+}
+
+static void
+schedule_cb (GObject      *obj,
+             GAsyncResult *result,
+             gpointer      user_data)
+{
+  MwsScheduleService *self = MWS_SCHEDULE_SERVICE (obj);
+  g_autoptr(ScheduleData) data = user_data;
+  GDBusMethodInvocation *invocation = data->invocation;
+  MwsScheduleEntry *entry = data->entry;
+  g_autoptr(GError) local_error = NULL;
+
+  /* Finish looking up the sender.
+   * FIXME: For the moment, we do nothing with this information, but in future
+   * we could prioritise downloads based on it. */
+  g_autofree gchar *sender_path = get_peer_credentials_finish (self, result, &local_error);
+
+  if (sender_path == NULL)
+    {
+      g_prefix_error (&local_error, _("Error adding entry to scheduler: "));
+      g_dbus_method_invocation_return_gerror (invocation, local_error);
       return;
     }
 
