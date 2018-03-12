@@ -68,6 +68,7 @@ static void proxy_notify_name_owner_cb (GObject     *obj,
 static const GDBusErrorEntry scheduler_error_map[] =
   {
     { MWSC_SCHEDULER_ERROR_FULL, "com.endlessm.DownloadManager1.Scheduler.Error.Full" },
+    { MWSC_SCHEDULER_ERROR_IDENTIFYING_PEER, "com.endlessm.DownloadManager1.Scheduler.Error.IdentifyingPeer" },
   };
 G_STATIC_ASSERT (G_N_ELEMENTS (scheduler_error_map) == MWSC_SCHEDULER_N_ERRORS);
 G_STATIC_ASSERT (G_N_ELEMENTS (scheduler_error_map) == G_N_ELEMENTS (scheduler_errors));

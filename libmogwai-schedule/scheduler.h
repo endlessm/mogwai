@@ -33,6 +33,8 @@ G_BEGIN_DECLS
  * MwsSchedulerError:
  * @MWS_SCHEDULER_ERROR_FULL: There are enough schedule entries in the scheduler
  *    and it has hit its resource limits.
+ * @MWS_SCHEDULER_ERROR_IDENTIFYING_PEER: A peer which was requesting a schedule
+ *    entry to be added could not be identified.
  *
  * Errors which can be returned by #MwsScheduler.
  *
@@ -41,8 +43,9 @@ G_BEGIN_DECLS
 typedef enum
 {
   MWS_SCHEDULER_ERROR_FULL = 0,
+  MWS_SCHEDULER_ERROR_IDENTIFYING_PEER,
 } MwsSchedulerError;
-#define MWS_SCHEDULER_N_ERRORS (MWS_SCHEDULER_ERROR_FULL + 1)
+#define MWS_SCHEDULER_N_ERRORS (MWS_SCHEDULER_ERROR_IDENTIFYING_PEER + 1)
 
 GQuark mws_scheduler_error_quark (void);
 #define MWS_SCHEDULER_ERROR mws_scheduler_error_quark ()
