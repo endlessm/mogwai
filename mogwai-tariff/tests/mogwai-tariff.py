@@ -44,6 +44,7 @@ class TestMogwaiTariff(unittest.TestCase):
         self.timeout_seconds = 10  # seconds per test
         self.tmpdir = tempfile.mkdtemp()
         os.chdir(self.tmpdir)
+        print('tmpdir:', self.tmpdir)
         if 'G_TEST_BUILDDIR' in os.environ:
             self.__mogwai_tariff = \
                 os.path.join(os.environ['G_TEST_BUILDDIR'], '..',
@@ -51,26 +52,34 @@ class TestMogwaiTariff(unittest.TestCase):
         else:
             self.__mogwai_tariff = os.path.join('/', 'usr', 'bin',
                                                 'mogwai-tariff-0')
+        print('mogwai_tariff:', self.__mogwai_tariff)
 
     def tearDown(self):
         shutil.rmtree(self.tmpdir)
 
+    def runMogwaiTariff(self, *args):
+        argv = [self.__mogwai_tariff]
+        argv.extend(args)
+        print('Running:', argv)
+        info = subprocess.run(argv, timeout=self.timeout_seconds,
+                              stdout=subprocess.PIPE,
+                              stderr=subprocess.STDOUT)
+        print('Output:', info.stdout.decode('utf-8'))
+        return info
+
     def test_single_period(self):
         """Test creating, dumping and looking up in a single period tariff."""
-        subprocess.check_call([self.__mogwai_tariff, 'build', 'tariff0',
-                               'tariff0',
-                               '2017-01-01T00:00:00Z', '2018-01-01T00:00:00Z',
-                               'year', '2', '15000000'],
-                              timeout=self.timeout_seconds,
-                              stderr=subprocess.STDOUT)
+        info = self.runMogwaiTariff('build', 'tariff0', 'tariff0',
+                                    '2017-01-01T00:00:00Z',
+                                    '2018-01-01T00:00:00Z',
+                                    'year', '2', '15000000')
+        info.check_returncode()
         self.assertTrue(os.path.exists('tariff0'))
 
         # Dump the tariff.
-        out = subprocess.check_output([self.__mogwai_tariff, 'dump',
-                                       'tariff0'],
-                                      timeout=self.timeout_seconds,
-                                      stderr=subprocess.STDOUT)
-        out = out.decode('utf-8').strip()
+        info = self.runMogwaiTariff('dump', 'tariff0')
+        info.check_returncode()
+        out = info.stdout.decode('utf-8').strip()
         self.assertIn(
             'Tariff ‘tariff0’\n'
             '----------------\n'
@@ -80,11 +89,10 @@ class TestMogwaiTariff(unittest.TestCase):
             ' • Capacity limit: 15.0 MB (15000000 bytes)', out)
 
         # Lookup a time in the tariff.
-        out = subprocess.check_output([self.__mogwai_tariff, 'lookup',
-                                       'tariff0', '2017-01-01T01:00:00Z'],
-                                      timeout=self.timeout_seconds,
-                                      stderr=subprocess.STDOUT)
-        out = out.decode('utf-8').strip()
+        info = self.runMogwaiTariff('lookup', 'tariff0',
+                                    '2017-01-01T01:00:00Z')
+        info.check_returncode()
+        out = info.stdout.decode('utf-8').strip()
         self.assertIn(
             'Period 2017-01-01T00:00:00+00 – 2018-01-01T00:00:00+00:\n'
             ' • Repeats every 2 years\n'
@@ -92,11 +100,8 @@ class TestMogwaiTariff(unittest.TestCase):
 
         # This lookup should fail because the time is outside a period in the
         # tariff.
-        info = subprocess.run([self.__mogwai_tariff, 'lookup',
-                               'tariff0', '2000-01-05T00:00:05Z'],
-                              timeout=self.timeout_seconds,
-                              stdout=subprocess.PIPE,
-                              stderr=subprocess.STDOUT)
+        info = self.runMogwaiTariff('lookup', 'tariff0',
+                                    '2000-01-05T00:00:05Z')
         out = info.stdout.decode('utf-8').strip()
         self.assertIn('No period matches the given date/time.', out)
         self.assertEqual(info.returncode, 2)  # EXIT_LOOKUP_FAILED
@@ -105,21 +110,20 @@ class TestMogwaiTariff(unittest.TestCase):
 
     def test_two_periods(self):
         """Test building and dumping a tariff with two periods."""
-        subprocess.check_call([self.__mogwai_tariff, 'build', 'tariff1',
-                               'tariff1',
-                               '2017-01-01T00:00:00Z', '2018-01-01T00:00:00Z',
-                               'none', '0', 'unlimited',
-                               '2017-01-02T00:00:00Z', '2017-01-02T05:00:00Z',
-                               'day', '1', '2000000'],
-                              timeout=self.timeout_seconds,
-                              stderr=subprocess.STDOUT)
+        info = self.runMogwaiTariff('build', 'tariff1',
+                                    'tariff1',
+                                    '2017-01-01T00:00:00Z',
+                                    '2018-01-01T00:00:00Z',
+                                    'none', '0', 'unlimited',
+                                    '2017-01-02T00:00:00Z',
+                                    '2017-01-02T05:00:00Z',
+                                    'day', '1', '2000000')
+        info.check_returncode()
         self.assertTrue(os.path.exists('tariff1'))
 
-        out = subprocess.check_output([self.__mogwai_tariff, 'dump',
-                                       'tariff1'],
-                                      timeout=self.timeout_seconds,
-                                      stderr=subprocess.STDOUT)
-        out = out.decode('utf-8').strip()
+        info = self.runMogwaiTariff('dump', 'tariff1')
+        info.check_returncode()
+        out = info.stdout.decode('utf-8').strip()
         self.assertIn(
             'Tariff ‘tariff1’\n'
             '----------------\n'
@@ -135,18 +139,16 @@ class TestMogwaiTariff(unittest.TestCase):
 
     def test_timezones(self):
         """Test building and dumping a tariff with non-UTC timezones."""
-        subprocess.check_call([self.__mogwai_tariff, 'build', 'tz', 'tz',
-                               '2017-01-01T00:00:00-01:00',
-                               '2018-01-01T00:00:00+00:30',
-                               'none', '0', 'unlimited'],
-                              timeout=self.timeout_seconds,
-                              stderr=subprocess.STDOUT)
+        info = self.runMogwaiTariff('build', 'tz', 'tz',
+                                    '2017-01-01T00:00:00-01:00',
+                                    '2018-01-01T00:00:00+00:30',
+                                    'none', '0', 'unlimited')
+        info.check_returncode()
         self.assertTrue(os.path.exists('tz'))
 
-        out = subprocess.check_output([self.__mogwai_tariff, 'dump', 'tz'],
-                                      timeout=self.timeout_seconds,
-                                      stderr=subprocess.STDOUT)
-        out = out.decode('utf-8').strip()
+        info = self.runMogwaiTariff('dump', 'tz')
+        info.check_returncode()
+        out = info.stdout.decode('utf-8').strip()
         self.assertIn(
             'Tariff ‘tz’\n'
             '-----------\n'
