@@ -152,7 +152,7 @@ test_tariff_builder_simple (void)
   g_autoptr(GBytes) bytes = NULL;
   bytes = mwt_tariff_builder_get_tariff_as_bytes (builder);
   g_assert_nonnull (bytes);
-  g_assert_cmpuint (g_bytes_get_size (bytes), ==, 110);
+  g_assert_cmpuint (g_bytes_get_size (bytes), ==, 140);
 }
 
 /* Test building a tariff with no periods. This should fail. */

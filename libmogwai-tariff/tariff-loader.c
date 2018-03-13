@@ -175,6 +175,26 @@ mwt_tariff_loader_load_from_bytes (MwtTariffLoader  *self,
   return mwt_tariff_loader_load_from_variant (self, variant, error);
 }
 
+/* Construct a #GDateTime from the given @unix_timestamp (always in UTC) and
+ * @timezone_abbreviation. This will return %NULL if an invalid time results. */
+static GDateTime *
+date_time_new_from_unix (guint64      unix_timestamp,
+                         const gchar *timezone_abbreviation)
+{
+  g_autoptr(GDateTime) utc = g_date_time_new_from_unix_utc (unix_timestamp);
+  if (utc == NULL)
+    return NULL;
+
+  g_autoptr(GTimeZone) tz = NULL;
+  if (*timezone_abbreviation == '\0')
+    tz = g_time_zone_new_local ();
+  else
+    tz = g_time_zone_new (timezone_abbreviation);
+  g_assert (tz != NULL);  /* creating a timezone can’t actually fail */
+
+  return g_date_time_to_timezone (utc, tz);
+}
+
 /**
  * mwt_tariff_loader_load_from_variant:
  * @self: a #MwtTariffLoader
@@ -226,7 +246,7 @@ mwt_tariff_loader_load_from_variant (MwtTariffLoader  *self,
     }
 
   /* Is the version number byteswapped? It should be 0x0001. */
-  if (format_version == 0x0100)
+  if (format_version == 0x0100 || format_version == 0x0200)
     {
       /* FIXME: Mess around with refs because g_variant_byteswap() had a bug
        * with how it handled floating refs.
@@ -235,8 +255,9 @@ mwt_tariff_loader_load_from_variant (MwtTariffLoader  *self,
       inner_variant_swapped = g_variant_byteswap (inner_variant);
       g_variant_unref (inner_variant);
       inner_variant = g_steal_pointer (&inner_variant_swapped);
+      format_version = GUINT16_SWAP_LE_BE (format_version);
     }
-  else if (format_version != 0x0001)
+  else if (format_version != 0x0001 && format_version != 0x0002)
     {
       g_set_error (error, MWT_TARIFF_ERROR, MWT_TARIFF_ERROR_INVALID,
                    _("Unknown file format version %x02."),
@@ -245,7 +266,10 @@ mwt_tariff_loader_load_from_variant (MwtTariffLoader  *self,
     }
 
   /* Load version 1 of the file format. */
-  if (!g_variant_is_of_type (inner_variant, G_VARIANT_TYPE ("(sa(ttqut))")))
+  if ((format_version == 1 &&
+       !g_variant_is_of_type (inner_variant, G_VARIANT_TYPE ("(sa(ttqut))"))) ||
+      (format_version == 2 &&
+       !g_variant_is_of_type (inner_variant, G_VARIANT_TYPE ("(sa(ttssqut))"))))
     {
       g_set_error (error, MWT_TARIFF_ERROR, MWT_TARIFF_ERROR_INVALID,
                    _("Input data does not have correct type."));
@@ -254,25 +278,43 @@ mwt_tariff_loader_load_from_variant (MwtTariffLoader  *self,
 
   const gchar *name;
   g_autoptr(GVariantIter) iter = NULL;
-  g_variant_get (inner_variant, "(&sa(ttqut))", &name, &iter);
+  g_variant_get (inner_variant, "(&sa*)", &name, &iter);
 
   guint64 start_unix, end_unix, capacity_limit;
+  const gchar *start_timezone, *end_timezone;
   guint16 repeat_type_uint16;
   guint32 repeat_period;
 
   g_autoptr(GPtrArray) periods = g_ptr_array_new_with_free_func (g_object_unref);
   gsize i = 0;
 
-  while (i++, g_variant_iter_loop (iter, "(ttqut)",
-                                   &start_unix,
-                                   &end_unix,
-                                   &repeat_type_uint16,
-                                   &repeat_period,
-                                   &capacity_limit))
+  while (i++,
+         (format_version == 2) ?
+             g_variant_iter_loop (iter, "(tt&s&squt)",
+                                  &start_unix,
+                                  &end_unix,
+                                  &start_timezone,
+                                  &end_timezone,
+                                  &repeat_type_uint16,
+                                  &repeat_period,
+                                  &capacity_limit) :
+             g_variant_iter_loop (iter, "(ttqut)",
+                                  &start_unix,
+                                  &end_unix,
+                                  &repeat_type_uint16,
+                                  &repeat_period,
+                                  &capacity_limit))
     {
+      /* Version 1 only supported UTC timezones. */
+      if (format_version == 1)
+        {
+          start_timezone = "Z";
+          end_timezone = "Z";
+        }
+
       /* Note: @start and @end might be %NULL. mwt_period_validate() handles that. */
-      g_autoptr(GDateTime) start = g_date_time_new_from_unix_utc (start_unix);
-      g_autoptr(GDateTime) end = g_date_time_new_from_unix_utc (end_unix);
+      g_autoptr(GDateTime) start = date_time_new_from_unix (start_unix, start_timezone);
+      g_autoptr(GDateTime) end = date_time_new_from_unix (end_unix, end_timezone);
       MwtPeriodRepeatType repeat_type = (MwtPeriodRepeatType) repeat_type_uint16;
 
       g_autoptr(GError) local_error = NULL;

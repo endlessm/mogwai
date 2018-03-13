@@ -38,7 +38,8 @@ test_tariff_loader_unloaded (void)
   g_assert_null (mwt_tariff_loader_get_tariff (loader));
 }
 
-/* Test the tariff loader handles erroneous files gracefully. */
+/* Test the tariff loader handles erroneous files gracefully.
+ * Note: These bytes are in version 1 format. */
 static void
 test_tariff_loader_errors (void)
 {
@@ -110,7 +111,8 @@ test_tariff_loader_errors (void)
     }
 }
 
-/* Test loading a simple tariff from bytes works. */
+/* Test loading a simple tariff from bytes works.
+ * Note: These bytes are in version 1 format. */
 static void
 test_tariff_loader_simple_bytes (void)
 {
@@ -167,7 +169,8 @@ test_tariff_loader_simple_bytes (void)
   g_assert_cmpuint (mwt_period_get_capacity_limit (period2), ==, G_MAXUINT64);
 }
 
-/* Test that loading a tariff with no periods fails gracefully. */
+/* Test that loading a tariff with no periods fails gracefully.
+ * Note: These bytes are in version 1 format. */
 static void
 test_tariff_loader_empty (void)
 {
@@ -190,7 +193,8 @@ test_tariff_loader_empty (void)
   g_assert_null (tariff);
 }
 
-/* Test that loading a byteswapped tariff with no periods also fails. */
+/* Test that loading a byteswapped tariff with no periods also fails.
+ * Note: These bytes are in version 1 format. */
 static void
 test_tariff_loader_empty_byteswapped (void)
 {

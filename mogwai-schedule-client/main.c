@@ -61,12 +61,7 @@ static void
 signal_data_clear (SignalData *data)
 {
   g_clear_object (&data->cancellable);
-  /* FIXME: Use g_clear_handle() in future */
-  if (data->handler_id != 0)
-    {
-      g_source_remove (data->handler_id);
-      data->handler_id = 0;
-    }
+  g_clear_handle_id (&data->handler_id, g_source_remove);
 }
 
 G_DEFINE_AUTO_CLEANUP_CLEAR_FUNC (SignalData, signal_data_clear)
