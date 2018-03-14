@@ -2,6 +2,8 @@ libmogwai_schedule_api_version = '1'
 libmogwai_schedule_sources = [
   'connection-monitor.c',
   'connection-monitor-nm.c',
+  'peer-manager.c',
+  'peer-manager-dbus.c',
   'schedule-entry.c',
   'schedule-service.c',
   'scheduler.c',
@@ -10,6 +12,8 @@ libmogwai_schedule_sources = [
 libmogwai_schedule_headers = [
   'connection-monitor.h',
   'connection-monitor-nm.h',
+  'peer-manager.h',
+  'peer-manager-dbus.h',
   'schedule-entry.h',
   'schedule-entry-interface.h',
   'schedule-service.h',

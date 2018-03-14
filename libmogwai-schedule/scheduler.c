@@ -27,6 +27,7 @@
 #include <glib/gi18n-lib.h>
 #include <gio/gio.h>
 #include <libmogwai-schedule/connection-monitor.h>
+#include <libmogwai-schedule/peer-manager.h>
 #include <libmogwai-schedule/schedule-entry.h>
 #include <libmogwai-schedule/scheduler.h>
 
@@ -80,6 +81,9 @@ static void connection_monitor_connections_changed_cb        (MwsConnectionMonit
 static void connection_monitor_connection_details_changed_cb (MwsConnectionMonitor *connection_monitor,
                                                               const gchar          *connection_id,
                                                               gpointer              user_data);
+static void peer_manager_peer_vanished_cb                    (MwsPeerManager       *manager,
+                                                              const gchar          *name,
+                                                              gpointer              user_data);
 
 /**
  * MwsScheduler:
@@ -96,6 +100,7 @@ struct _MwsScheduler
 
   /* Scheduling data sources. */
   MwsConnectionMonitor *connection_monitor;  /* (owned) */
+  MwsPeerManager *peer_manager;  /* (owned) */
 
   /* Time tracking. */
   GMainContext *reschedule_context;  /* (owned) */
@@ -133,6 +138,7 @@ typedef enum
   PROP_MAX_ENTRIES,
   PROP_CONNECTION_MONITOR,
   PROP_MAX_ACTIVE_ENTRIES,
+  PROP_PEER_MANAGER,
 } MwsSchedulerProperty;
 
 G_DEFINE_TYPE (MwsScheduler, mws_scheduler, G_TYPE_OBJECT)
@@ -141,7 +147,7 @@ static void
 mws_scheduler_class_init (MwsSchedulerClass *klass)
 {
   GObjectClass *object_class = (GObjectClass *) klass;
-  GParamSpec *props[PROP_MAX_ACTIVE_ENTRIES + 1] = { NULL, };
+  GParamSpec *props[PROP_PEER_MANAGER + 1] = { NULL, };
 
   object_class->constructed = mws_scheduler_constructed;
   object_class->dispose = mws_scheduler_dispose;
@@ -212,6 +218,23 @@ mws_scheduler_class_init (MwsSchedulerClass *klass)
                          1, G_MAXUINT, DEFAULT_MAX_ACTIVE_ENTRIES,
                          G_PARAM_READWRITE | G_PARAM_CONSTRUCT_ONLY | G_PARAM_STATIC_STRINGS);
 
+  /**
+   * MwsScheduler:peer-manager:
+   *
+   * A #MwsPeerManager instance to provide information about the peers who are
+   * adding schedule entries to the scheduler. (Typically, these are D-Bus peers
+   * using the scheduler’s D-Bus interface.)
+   *
+   * Since: 0.1.0
+   */
+  props[PROP_PEER_MANAGER] =
+      g_param_spec_object ("peer-manager", "Peer Manager",
+                           "A #MwsPeerManager instance to provide information "
+                           "about the peers who are adding schedule entries to "
+                           "the scheduler.",
+                           MWS_TYPE_PEER_MANAGER,
+                           G_PARAM_READWRITE | G_PARAM_CONSTRUCT_ONLY | G_PARAM_STATIC_STRINGS);
+
   g_object_class_install_properties (object_class, G_N_ELEMENTS (props), props);
 
   /**
@@ -278,6 +301,7 @@ mws_scheduler_constructed (GObject *object)
 
   /* Check we have our construction properties. */
   g_assert (MWS_IS_CONNECTION_MONITOR (self->connection_monitor));
+  g_assert (MWS_IS_PEER_MANAGER (self->peer_manager));
 
   /* Connect to signals from the connection monitor, which will trigger
    * rescheduling. */
@@ -285,6 +309,11 @@ mws_scheduler_constructed (GObject *object)
                     (GCallback) connection_monitor_connections_changed_cb, self);
   g_signal_connect (self->connection_monitor, "connection-details-changed",
                     (GCallback) connection_monitor_connection_details_changed_cb, self);
+
+  /* Connect to signals from the peer manager, which will trigger removal of
+   * entries when a peer disappears. */
+  g_signal_connect (self->peer_manager, "peer-vanished",
+                    (GCallback) peer_manager_peer_vanished_cb, self);
 }
 
 static void
@@ -306,6 +335,15 @@ mws_scheduler_dispose (GObject *object)
     }
 
   g_clear_object (&self->connection_monitor);
+
+  if (self->peer_manager != NULL)
+    {
+      g_signal_handlers_disconnect_by_func (self->peer_manager,
+                                            peer_manager_peer_vanished_cb,
+                                            self);
+    }
+
+  g_clear_object (&self->peer_manager);
 
   if (self->reschedule_source != NULL)
     {
@@ -341,6 +379,9 @@ mws_scheduler_get_property (GObject    *object,
     case PROP_MAX_ACTIVE_ENTRIES:
       g_value_set_uint (value, self->max_active_entries);
       break;
+    case PROP_PEER_MANAGER:
+      g_value_set_object (value, self->peer_manager);
+      break;
     default:
       g_assert_not_reached ();
     }
@@ -373,6 +414,11 @@ mws_scheduler_set_property (GObject      *object,
       /* Construct only. */
       self->max_active_entries = g_value_get_uint (value);
       break;
+    case PROP_PEER_MANAGER:
+      /* Construct only. */
+      g_assert (self->peer_manager == NULL);
+      self->peer_manager = g_value_dup_object (value);
+      break;
     default:
       g_assert_not_reached ();
     }
@@ -403,10 +449,28 @@ connection_monitor_connection_details_changed_cb (MwsConnectionMonitor *connecti
   mws_scheduler_reschedule (self);
 }
 
+static void
+peer_manager_peer_vanished_cb (MwsPeerManager *manager,
+                               const gchar    *name,
+                               gpointer        user_data)
+{
+  MwsScheduler *self = MWS_SCHEDULER (user_data);
+  g_autoptr(GError) local_error = NULL;
+
+  /* Remove the schedule entries for this peer. */
+  if (!mws_scheduler_remove_entries_for_owner (self, name, &local_error))
+    {
+      g_debug ("Failed to remove schedule entries for owner ‘%s’: %s",
+               name, local_error->message);
+    }
+}
+
 /**
  * mws_scheduler_new:
  * @connection_monitor: (transfer none): a #MwsConnectionMonitor to provide
  *    information about network connections to the scheduler
+ * @peer_manager: (transfer none): a #MwsPeerManager to provide information
+ *    about peers which are adding schedule entries to the scheduler
  *
  * Create a new #MwsScheduler instance, with no schedule entries to begin
  * with.
@@ -415,13 +479,33 @@ connection_monitor_connection_details_changed_cb (MwsConnectionMonitor *connecti
  * Since: 0.1.0
  */
 MwsScheduler *
-mws_scheduler_new (MwsConnectionMonitor *connection_monitor)
+mws_scheduler_new (MwsConnectionMonitor *connection_monitor,
+                   MwsPeerManager       *peer_manager)
 {
   g_return_val_if_fail (MWS_IS_CONNECTION_MONITOR (connection_monitor), NULL);
+  g_return_val_if_fail (MWS_IS_PEER_MANAGER (peer_manager), NULL);
 
   return g_object_new (MWS_TYPE_SCHEDULER,
                        "connection-monitor", connection_monitor,
+                       "peer-manager", peer_manager,
                        NULL);
+}
+
+/**
+ * mws_scheduler_get_peer_manager:
+ * @self: a #MwsScheduler
+ *
+ * Get the value of #MwsScheduler:peer-manager.
+ *
+ * Returns: (transfer none): the peer manager for the scheduler
+ * Since: 0.1.0
+ */
+MwsPeerManager *
+mws_scheduler_get_peer_manager (MwsScheduler *self)
+{
+  g_return_val_if_fail (MWS_IS_SCHEDULER (self), NULL);
+
+  return self->peer_manager;
 }
 
 /**
@@ -653,6 +737,45 @@ reschedule_cb (gpointer user_data)
   return G_SOURCE_REMOVE;
 }
 
+/* Get the priority of a given peer. Higher returned numbers indicate more
+ * important peers. */
+static gint
+get_peer_priority (MwsScheduler     *self,
+                   MwsScheduleEntry *entry)
+{
+  const gchar *owner = mws_schedule_entry_get_owner (entry);
+  const gchar *owner_path =
+      mws_peer_manager_get_peer_credentials (self->peer_manager, owner);
+
+  /* If we haven’t got credentials for this peer (which would be unexpected and
+   * indicate a serious problem), give it a low priority. */
+  if (owner_path == NULL)
+    return G_MININT;
+
+  /* The OS and app updaters are equally as important as each other. The actual
+   * priority numbers chosen here are fairly arbitrary; it’s the partial order
+   * over them which is important. */
+  if (g_str_equal (owner_path, "/usr/bin/eos-updater") ||
+      g_str_equal (owner_path, "/usr/bin/gnome-software"))
+    return G_MAXINT;
+
+  /* Anything else goes in the range (G_MININT, G_MAXINT). */
+  gint priority = g_str_hash (owner_path) + G_MININT;
+  if (priority == G_MININT)
+    priority += 1;
+  if (priority == G_MAXINT)
+    priority -= 1;
+  return priority;
+}
+
+/* Compare entries to give a total order by scheduling priority, with the most
+ * important entries for scheduling listed first. i.e. Given entries @a and @b,
+ * this will return a negative number if @a should be scheduled before @b.
+ * This is one of the core parts of the scheduling algorithm; earlier stages
+ * trim any entries which can’t be scheduled (for example, due to wanting to use
+ * a metered connection when the user has disallowed it); later stages select
+ * the most important N entries to actually schedule, according to
+ * parallelisation limits. */
 static gint
 entry_compare_cb (gconstpointer a_,
                   gconstpointer b_,
@@ -662,9 +785,41 @@ entry_compare_cb (gconstpointer a_,
   MwsScheduleEntry *a = MWS_SCHEDULE_ENTRY (a_);
   MwsScheduleEntry *b = MWS_SCHEDULE_ENTRY (b_);
 
-  /* FIXME: Work out an ordering for entries. */
+  /* As per https://phabricator.endlessm.com/T21327, we want the following
+   * priority order (most important first):
+   *  1. App extensions to com.endlessm.* apps
+   *  2. OS updates
+   *  3. App updates and app extensions to non-Endless apps
+   *  4. Anything else
+   *
+   * We currently have two inputs to base this on: the identity of the peer who
+   * owns a #MwsScheduleEntry, and the priority they set for the entry.
+   * Priorities are scoped to an owner, not global.
+   *
+   * We can implement what we want by hard-coding it so that the scopes for
+   * gnome-software and eos-updater are merged, and both given priority over any
+   * other peer. Then getting the ordering we want is a matter of coordinating
+   * the priorities set by gnome-software and eos-updater on their schedule
+   * entries, which is possible since we control all of that code. */
 
-  return 0;
+  /* Sort by peer first. */
+  gint a_peer_priority = get_peer_priority (self, a);
+  gint b_peer_priority = get_peer_priority (self, b);
+
+  if (a_peer_priority != b_peer_priority)
+    return b_peer_priority - a_peer_priority;
+
+  /* Within the peer, sort by the priority assigned by that peer to the entry. */
+  guint32 a_entry_priority = mws_schedule_entry_get_priority (a);
+  guint32 b_entry_priority = mws_schedule_entry_get_priority (b);
+
+  if (a_entry_priority != b_entry_priority)
+    return b_entry_priority - a_entry_priority;
+
+  /* Arbitrarily break ties using the entries’ IDs, which should always be
+   * different. */
+  return g_strcmp0 (mws_schedule_entry_get_id (a),
+                    mws_schedule_entry_get_id (b));
 }
 
 /**
