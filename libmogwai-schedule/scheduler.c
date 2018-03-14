@@ -108,16 +108,30 @@ struct _MwsScheduler
    * hash table as @entries since we need to be able to return that one in
    * mws_scheduler_get_entries(). Always has the same set of keys as @entries. */
   GHashTable *entries_data;  /* (owned) (element-type utf8 EntryData) */
+
+  /* Maximum number of downloads allowed to be active at the same time. */
+  guint max_active_entries;
 };
 
 /* Arbitrarily chosen. */
 static const gsize DEFAULT_MAX_ENTRIES = 1024;
+/* Chosen for a few reasons:
+ *  1. OSTree app updates and installs take ungodly amounts of I/O and CPU —
+ *     doing more than one of these at a time in the background is an
+ *     aggressively bad UX
+ *  2. Over-parallelisation causes bandwidth hogging and reduces the amount of
+ *     bandwidth available for foreground applications or user interactivity
+ *  3. We don’t want head-of-line blocking by large OS updates to block smaller,
+ *     more-regular content updates.
+ */
+static const guint DEFAULT_MAX_ACTIVE_ENTRIES = 1;
 
 typedef enum
 {
   PROP_ENTRIES = 1,
   PROP_MAX_ENTRIES,
   PROP_CONNECTION_MONITOR,
+  PROP_MAX_ACTIVE_ENTRIES,
 } MwsSchedulerProperty;
 
 G_DEFINE_TYPE (MwsScheduler, mws_scheduler, G_TYPE_OBJECT)
@@ -126,7 +140,7 @@ static void
 mws_scheduler_class_init (MwsSchedulerClass *klass)
 {
   GObjectClass *object_class = (GObjectClass *) klass;
-  GParamSpec *props[PROP_CONNECTION_MONITOR + 1] = { NULL, };
+  GParamSpec *props[PROP_MAX_ACTIVE_ENTRIES + 1] = { NULL, };
 
   object_class->constructed = mws_scheduler_constructed;
   object_class->dispose = mws_scheduler_dispose;
@@ -182,6 +196,21 @@ mws_scheduler_class_init (MwsSchedulerClass *klass)
                            MWS_TYPE_CONNECTION_MONITOR,
                            G_PARAM_READWRITE | G_PARAM_CONSTRUCT_ONLY | G_PARAM_STATIC_STRINGS);
 
+  /**
+   * MwsScheduler:max-active-entries:
+   *
+   * Maximum number of schedule entries which can be active at any time. This
+   * effectively limits the parallelisation of the scheduler. In contrast with
+   * #MwsScheduler:max-entries, this limit is expected to be reached routinely.
+   *
+   * Since: 0.1.0
+   */
+  props[PROP_MAX_ACTIVE_ENTRIES] =
+      g_param_spec_uint ("max-active-entries", "Max. Active Entries",
+                         "Maximum number of schedule entries which can be active at any time.",
+                         1, G_MAXUINT, DEFAULT_MAX_ACTIVE_ENTRIES,
+                         G_PARAM_READWRITE | G_PARAM_CONSTRUCT_ONLY | G_PARAM_STATIC_STRINGS);
+
   g_object_class_install_properties (object_class, G_N_ELEMENTS (props), props);
 
   /**
@@ -236,6 +265,7 @@ mws_scheduler_init (MwsScheduler *self)
   self->max_entries = DEFAULT_MAX_ENTRIES;
   self->entries_data = g_hash_table_new_full (g_str_hash, g_str_equal,
                                               NULL, (GDestroyNotify) entry_data_free);
+  self->max_active_entries = DEFAULT_MAX_ACTIVE_ENTRIES;
 }
 
 static void
@@ -307,6 +337,9 @@ mws_scheduler_get_property (GObject    *object,
     case PROP_CONNECTION_MONITOR:
       g_value_set_object (value, self->connection_monitor);
       break;
+    case PROP_MAX_ACTIVE_ENTRIES:
+      g_value_set_uint (value, self->max_active_entries);
+      break;
     default:
       g_assert_not_reached ();
     }
@@ -335,6 +368,10 @@ mws_scheduler_set_property (GObject      *object,
       /* Construct only. */
       g_assert (self->connection_monitor == NULL);
       self->connection_monitor = g_value_dup_object (value);
+      break;
+    case PROP_MAX_ACTIVE_ENTRIES:
+      /* Construct only. */
+      self->max_active_entries = g_value_get_uint (value);
       break;
     default:
       g_assert_not_reached ();
@@ -616,6 +653,20 @@ reschedule_cb (gpointer user_data)
   return G_SOURCE_REMOVE;
 }
 
+static gint
+entry_compare_cb (gconstpointer a_,
+                  gconstpointer b_,
+                  gpointer      user_data)
+{
+  MwsScheduler *self = MWS_SCHEDULER (user_data);
+  MwsScheduleEntry *a = MWS_SCHEDULE_ENTRY (a_);
+  MwsScheduleEntry *b = MWS_SCHEDULE_ENTRY (b_);
+
+  /* FIXME: Work out an ordering for entries. */
+
+  return 0;
+}
+
 /**
  * mws_scheduler_reschedule:
  * @self: a #MwsScheduler
@@ -694,6 +745,11 @@ mws_scheduler_reschedule (MwsScheduler *self)
    * bandwidth usage, capacity limits, etc. */
   g_autoptr(GPtrArray) entries_now_active = g_ptr_array_new_with_free_func (NULL);
   g_autoptr(GPtrArray) entries_were_active = g_ptr_array_new_with_free_func (NULL);
+
+  /* An array of the entries which can be active within the user’s preferences
+   * for cost. Not necessarily all of them will be chosen to be active, though,
+   * based on parallelisation limits and prioritisation. */
+  g_autoptr(GPtrArray) entries_can_be_active = g_ptr_array_new_with_free_func (NULL);
 
   g_autoptr(GPtrArray) safe_connections = g_ptr_array_new_full (n_connections, NULL);
 
@@ -796,10 +852,40 @@ mws_scheduler_reschedule (MwsScheduler *self)
        * FIXME: Allow clients to specify whether they support downloading from
        * selective connections. If so, their downloads could be made active
        * without all active connections having to be safe. */
-      gboolean active = (safe_connections->len == n_connections);
-      g_debug ("%s: Entry ‘%s’ is %s (%u of %" G_GSIZE_FORMAT " connections are safe)",
-               G_STRFUNC, entry_id, active ? "active" : "not active",
+      gboolean can_be_active = (safe_connections->len == n_connections);
+      g_debug ("%s: Entry ‘%s’ %s (%u of %" G_GSIZE_FORMAT " connections are safe)",
+               G_STRFUNC, entry_id,
+               can_be_active ? "can be active" : "cannot be active",
                safe_connections->len, n_connections);
+
+      if (can_be_active)
+        {
+          g_ptr_array_add (entries_can_be_active, entry);
+        }
+      else
+        {
+          /* Accounting for the signal emission at the end of the function. */
+          if (data->is_active)
+            g_ptr_array_add (entries_were_active, entry);
+
+          /* Update this entry’s status. */
+          data->is_active = FALSE;
+        }
+    }
+
+  /* Order the potentially-active entries by priority. */
+  g_ptr_array_sort_with_data (entries_can_be_active, entry_compare_cb, self);
+
+  /* Take the most important N potentially-active entries and actually mark them
+   * as active; mark the rest as not active. N is the maximum number of active
+   * entries set at construction time for the scheduler. */
+  for (gsize i = 0; i < entries_can_be_active->len; i++)
+    {
+      MwsScheduleEntry *entry = MWS_SCHEDULE_ENTRY (g_ptr_array_index (entries_can_be_active, i));
+      EntryData *data = g_hash_table_lookup (self->entries_data, mws_schedule_entry_get_id (entry));
+      g_assert (data != NULL);
+
+      gboolean active = (i < self->max_active_entries);
 
       /* Accounting for the signal emission at the end of the function. */
       if (data->is_active && !active)
