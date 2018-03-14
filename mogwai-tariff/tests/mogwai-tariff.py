@@ -61,9 +61,15 @@ class TestMogwaiTariff(unittest.TestCase):
         argv = [self.__mogwai_tariff]
         argv.extend(args)
         print('Running:', argv)
+
+        env = os.environ.copy()
+        env['LC_ALL'] = 'C.UTF-8'
+        print('Environment:', env)
+
         info = subprocess.run(argv, timeout=self.timeout_seconds,
                               stdout=subprocess.PIPE,
-                              stderr=subprocess.STDOUT)
+                              stderr=subprocess.STDOUT,
+                              env=env)
         print('Output:', info.stdout.decode('utf-8'))
         return info
 

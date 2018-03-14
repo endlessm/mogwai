@@ -99,7 +99,7 @@ test_template = files('template.test.in')
 test_env = [
   'G_DEBUG=gc-friendly',
   'MALLOC_CHECK_=2',
-  'LANG=C.UTF-8',
+  'LC_ALL=C.UTF-8',
 ]
 
 subdir('libhelper')
