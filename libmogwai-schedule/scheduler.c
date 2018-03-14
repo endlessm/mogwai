@@ -362,7 +362,6 @@ mws_scheduler_set_property (GObject      *object,
       break;
     case PROP_MAX_ENTRIES:
       /* Construct only. */
-      g_assert (self->max_entries == 0);
       self->max_entries = g_value_get_uint (value);
       break;
     case PROP_CONNECTION_MONITOR:
