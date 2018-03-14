@@ -26,6 +26,7 @@
 #include <glib-object.h>
 #include <glib/gi18n-lib.h>
 #include <gio/gio.h>
+#include <libmogwai-schedule/connection-monitor.h>
 #include <libmogwai-schedule/schedule-entry.h>
 #include <libmogwai-schedule/scheduler.h>
 
