@@ -807,17 +807,31 @@ entry_compare_cb (gconstpointer a_,
   gint b_peer_priority = get_peer_priority (self, b);
 
   if (a_peer_priority != b_peer_priority)
-    return b_peer_priority - a_peer_priority;
+    {
+      g_debug ("%s: Comparing schedule entries ‘%s’ and ‘%s’ by peer priority: %d vs %d",
+               G_STRFUNC, mws_schedule_entry_get_id (a),
+               mws_schedule_entry_get_id (b), a_peer_priority, b_peer_priority);
+      return b_peer_priority - a_peer_priority;
+    }
 
   /* Within the peer, sort by the priority assigned by that peer to the entry. */
   guint32 a_entry_priority = mws_schedule_entry_get_priority (a);
   guint32 b_entry_priority = mws_schedule_entry_get_priority (b);
 
   if (a_entry_priority != b_entry_priority)
-    return b_entry_priority - a_entry_priority;
+    {
+      g_debug ("%s: Comparing schedule entries ‘%s’ and ‘%s’ by entry priority: %u vs %u",
+               G_STRFUNC, mws_schedule_entry_get_id (a),
+               mws_schedule_entry_get_id (b), a_entry_priority,
+               b_entry_priority);
+      return b_entry_priority - a_entry_priority;
+    }
 
   /* Arbitrarily break ties using the entries’ IDs, which should always be
    * different. */
+  g_debug ("%s: Comparing schedule entries ‘%s’ and ‘%s’ by entry ID",
+           G_STRFUNC, mws_schedule_entry_get_id (a),
+           mws_schedule_entry_get_id (b));
   return g_strcmp0 (mws_schedule_entry_get_id (a),
                     mws_schedule_entry_get_id (b));
 }
@@ -1037,10 +1051,16 @@ mws_scheduler_reschedule (MwsScheduler *self)
   for (gsize i = 0; i < entries_can_be_active->len; i++)
     {
       MwsScheduleEntry *entry = MWS_SCHEDULE_ENTRY (g_ptr_array_index (entries_can_be_active, i));
-      EntryData *data = g_hash_table_lookup (self->entries_data, mws_schedule_entry_get_id (entry));
+      const gchar *entry_id = mws_schedule_entry_get_id (entry);
+      EntryData *data = g_hash_table_lookup (self->entries_data, entry_id);
       g_assert (data != NULL);
 
       gboolean active = (i < self->max_active_entries);
+      g_debug ("%s: Entry ‘%s’ %s (index %" G_GSIZE_FORMAT " of %u sorted "
+               "entries which can be active; limit of %u which will be active)",
+               G_STRFUNC, entry_id,
+               active ? "will be active" : "will not be active",
+               i, entries_can_be_active->len, self->max_active_entries);
 
       /* Accounting for the signal emission at the end of the function. */
       if (data->is_active && !active)
