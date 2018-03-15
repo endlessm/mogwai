@@ -65,9 +65,10 @@ static const gchar *mws_peer_manager_dbus_get_peer_credentials           (MwsPee
  *
  * The credentials of a peer are retrieved from the D-Bus daemon using
  * [`GetConnectionCredentials`](https://dbus.freedesktop.org/doc/dbus-specification.html#bus-messages-get-connection-credentials),
- * and realpath() on `/proc/$pid/exe` to get the absolute path to the executable
- * for each peer, which we use as an identifier for it. This is not atomic, as
- * PIDs can be reused in the time it takes us to query the information, but
+ * and reading `/proc/$pid/cmdline` to get the absolute path to the executable
+ * for each peer, which we use as an identifier for it. This is not atomic or
+ * particularly trusted, as PIDs can be reused in the time it takes us to query
+ * the information, and processes can modify their own cmdline file, but
  * without an LSM enabled in the kernel and dbus-daemon, it’s the best we can do
  * for identifying processes.
  *
@@ -286,8 +287,11 @@ ensure_peer_credentials_cb (GObject      *obj,
    * querying the kernel for the process name), but there’s nothing we can
    * do about that. The correct approach is to use an LSM label as returned
    * by GetConnectionCredentials(), but EOS doesn’t support any LSM.
-   * We deliberately look at /proc/$pid/exe, rather than /proc/$pid/cmdline,
-   * since processes can modify the latter at runtime. */
+   * We would look at /proc/$pid/exe, but that requires elevated privileges
+   * (CAP_SYS_PTRACE, but I can’t get that working; so it would require root
+   * privileges). Instead, we look at /proc/$pid/cmdline, which is accessible
+   * by all. Unfortunately, it is also forgeable. Thankfully this only affects
+   * the priority of download scheduling, not anything security critical. */
   guint process_id;
 
   g_autoptr(GVariant) credentials = g_variant_get_child_value (retval, 0);
@@ -302,21 +306,39 @@ ensure_peer_credentials_cb (GObject      *obj,
     }
 
   g_autofree gchar *pid_str = g_strdup_printf ("%u", process_id);
-  g_autofree gchar *proc_pid_exe = g_build_filename ("/proc", pid_str, "exe", NULL);
-  char sender_path[PATH_MAX];
+  g_autofree gchar *proc_pid_cmdline = g_build_filename ("/proc", pid_str, "cmdline", NULL);
+  g_autofree gchar *cmdline = NULL;
 
-  if (realpath (proc_pid_exe, sender_path) == NULL)
+  g_debug ("%s: Getting contents of ‘%s’", G_STRFUNC, proc_pid_cmdline);
+
+  /* Assume the path is always the first nul-terminated segment. */
+  if (!g_file_get_contents (proc_pid_cmdline, &cmdline, NULL, &local_error))
     {
       g_task_return_new_error (task, MWS_SCHEDULER_ERROR,
                                MWS_SCHEDULER_ERROR_IDENTIFYING_PEER,
                                _("Executable path for peer ‘%s’ (process ID: %s) "
-                                 "could not be determined"),
-                               sender, pid_str);
+                                 "could not be determined: %s"),
+                               sender, pid_str, local_error->message);
       return;
     }
 
-  g_debug ("%s: Got credentials from D-Bus daemon; path is ‘%s’",
-           G_STRFUNC, sender_path);
+  /* Resolve to an absolute path, since what we get back might not be absolute. */
+  g_autofree gchar *sender_path = g_find_program_in_path (cmdline);
+
+  if (sender_path == NULL)
+    {
+      g_autofree gchar *message =
+          g_strdup_printf (_("Path ‘%s’ could not be resolved"), cmdline);
+      g_task_return_new_error (task, MWS_SCHEDULER_ERROR,
+                               MWS_SCHEDULER_ERROR_IDENTIFYING_PEER,
+                               _("Executable path for peer ‘%s’ (process ID: %s) "
+                                 "could not be determined: %s"),
+                               sender, pid_str, message);
+      return;
+    }
+
+  g_debug ("%s: Got credentials from D-Bus daemon; path is ‘%s’ (resolved from ‘%s’)",
+           G_STRFUNC, sender_path, cmdline);
 
   g_hash_table_replace (self->peer_credentials,
                         g_strdup (sender), g_strdup (sender_path));
