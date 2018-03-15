@@ -782,8 +782,8 @@ entry_compare_cb (gconstpointer a_,
                   gpointer      user_data)
 {
   MwsScheduler *self = MWS_SCHEDULER (user_data);
-  MwsScheduleEntry *a = MWS_SCHEDULE_ENTRY (a_);
-  MwsScheduleEntry *b = MWS_SCHEDULE_ENTRY (b_);
+  MwsScheduleEntry *a = MWS_SCHEDULE_ENTRY (*((MwsScheduleEntry **) a_));
+  MwsScheduleEntry *b = MWS_SCHEDULE_ENTRY (*((MwsScheduleEntry **) b_));
 
   /* As per https://phabricator.endlessm.com/T21327, we want the following
    * priority order (most important first):
