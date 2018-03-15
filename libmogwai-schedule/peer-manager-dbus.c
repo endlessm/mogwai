@@ -202,10 +202,11 @@ peer_vanished_cb (GDBusConnection *connection,
   MwsPeerManagerDBus *self = MWS_PEER_MANAGER_DBUS (user_data);
 
   g_debug ("%s: Removing peer credentials for ‘%s’ from cache", G_STRFUNC, name);
-  g_hash_table_remove (self->peer_credentials, name);
-
-  /* Notify users of this API. */
-  g_signal_emit_by_name (self, "peer-vanished", name);
+  if (g_hash_table_remove (self->peer_credentials, name))
+    {
+      /* Notify users of this API. */
+      g_signal_emit_by_name (self, "peer-vanished", name);
+    }
 }
 
 /* An async function for getting credentials for D-Bus peers, either by querying
@@ -250,7 +251,7 @@ mws_peer_manager_dbus_ensure_peer_credentials_async (MwsPeerManager      *manage
       g_dbus_connection_call (self->connection, "org.freedesktop.DBus", "/",
                               "org.freedesktop.DBus", "GetConnectionCredentials",
                               g_variant_new ("(s)", sender),
-                              G_VARIANT_TYPE ("a{sv}"),
+                              G_VARIANT_TYPE ("(a{sv})"),
                               G_DBUS_CALL_FLAGS_NONE,
                               -1  /* default timeout */,
                               cancellable,
@@ -270,10 +271,10 @@ ensure_peer_credentials_cb (GObject      *obj,
   g_autoptr(GError) local_error = NULL;
 
   /* Finish looking up the sender. */
-  g_autoptr(GVariant) credentials = NULL;
-  credentials = g_dbus_connection_call_finish (connection, result, &local_error);
+  g_autoptr(GVariant) retval = NULL;
+  retval = g_dbus_connection_call_finish (connection, result, &local_error);
 
-  if (credentials == NULL)
+  if (retval == NULL)
     {
       g_task_return_error (task, g_steal_pointer (&local_error));
       return;
@@ -288,6 +289,8 @@ ensure_peer_credentials_cb (GObject      *obj,
    * We deliberately look at /proc/$pid/exe, rather than /proc/$pid/cmdline,
    * since processes can modify the latter at runtime. */
   guint process_id;
+
+  g_autoptr(GVariant) credentials = g_variant_get_child_value (retval, 0);
 
   if (!g_variant_lookup (credentials, "ProcessID", "u", &process_id))
     {
