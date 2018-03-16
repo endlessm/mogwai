@@ -34,6 +34,8 @@ G_BEGIN_DECLS
  *    due to the service disappearing.
  * @MWSC_SCHEDULER_ERROR_FULL: There are enough schedule entries in the
  *    scheduler and it has hit its resource limits.
+ * @MWSC_SCHEDULER_ERROR_IDENTIFYING_PEER: The scheduler could not determine
+ *    required details about this peer process.
  *
  * Errors which can be returned by #MwscScheduler.
  *
@@ -41,10 +43,13 @@ G_BEGIN_DECLS
  */
 typedef enum
 {
+  /* These are local-only: */
   MWSC_SCHEDULER_ERROR_INVALIDATED = 0,
+  /* These map to errors from the daemon: */
   MWSC_SCHEDULER_ERROR_FULL,
+  MWSC_SCHEDULER_ERROR_IDENTIFYING_PEER,
 } MwscSchedulerError;
-#define MWSC_SCHEDULER_N_ERRORS (MWSC_SCHEDULER_ERROR_INVALIDATED + 1)
+#define MWSC_SCHEDULER_N_ERRORS (MWSC_SCHEDULER_ERROR_IDENTIFYING_PEER - MWSC_SCHEDULER_ERROR_INVALIDATED)
 
 GQuark mwsc_scheduler_error_quark (void);
 #define MWSC_SCHEDULER_ERROR mwsc_scheduler_error_quark ()

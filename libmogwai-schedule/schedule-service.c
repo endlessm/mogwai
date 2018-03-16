@@ -138,13 +138,12 @@ static void active_entries_changed_cb (MwsScheduler    *scheduler,
 static void entry_notify_cb           (GObject         *obj,
                                        GParamSpec      *pspec,
                                        gpointer         user_data);
-static void peer_vanished_cb          (GDBusConnection *connection,
-                                       const gchar     *name,
-                                       gpointer         user_data);
 
 static const GDBusErrorEntry scheduler_error_map[] =
   {
     { MWS_SCHEDULER_ERROR_FULL, "com.endlessm.DownloadManager1.Scheduler.Error.Full" },
+    { MWS_SCHEDULER_ERROR_IDENTIFYING_PEER,
+      "com.endlessm.DownloadManager1.Scheduler.Error.IdentifyingPeer" },
   };
 G_STATIC_ASSERT (G_N_ELEMENTS (scheduler_error_map) == MWS_SCHEDULER_N_ERRORS);
 G_STATIC_ASSERT (G_N_ELEMENTS (scheduler_error_map) == G_N_ELEMENTS (scheduler_errors));
@@ -166,9 +165,6 @@ struct _MwsScheduleService
   GDBusConnection *connection;  /* (owned) */
   gchar *object_path;  /* (owned) */
   guint entry_subtree_id;
-
-  /* Hold the watch IDs of all peers who have added entries at some point. */
-  GPtrArray *peer_watch_ids;  /* (owned) */
 
   /* Used to cancel any pending operations when the object is unregistered. */
   GCancellable *cancellable;  /* (owned) */
@@ -270,16 +266,9 @@ mws_schedule_service_class_init (MwsScheduleServiceClass *klass)
 }
 
 static void
-watcher_id_free (gpointer data)
-{
-  g_bus_unwatch_name (GPOINTER_TO_UINT (data));
-}
-
-static void
 mws_schedule_service_init (MwsScheduleService *self)
 {
   self->cancellable = g_cancellable_new ();
-  self->peer_watch_ids = g_ptr_array_new_with_free_func (watcher_id_free);
 }
 
 static GPtrArray *
@@ -333,8 +322,6 @@ mws_schedule_service_dispose (GObject *object)
     }
 
   g_clear_object (&self->scheduler);
-
-  g_clear_pointer (&self->peer_watch_ids, g_ptr_array_unref);
 
   g_clear_object (&self->connection);
   g_clear_pointer (&self->object_path, g_free);
@@ -783,22 +770,6 @@ G_STATIC_ASSERT (G_N_ELEMENTS (schedule_entry_methods) ==
                  -1  /* NULL terminator */ +
                  3  /* o.fdo.DBus.Properties */);
 
-static void
-peer_vanished_cb (GDBusConnection *connection,
-                  const gchar     *name,
-                  gpointer         user_data)
-{
-  MwsScheduleService *self = MWS_SCHEDULE_SERVICE (user_data);
-  g_autoptr(GError) local_error = NULL;
-
-  /* Remove the schedule entries for this peer. */
-  if (!mws_scheduler_remove_entries_for_owner (self->scheduler, name, &local_error))
-    {
-      g_debug ("Failed to remove schedule entries for owner ‘%s’: %s",
-               name, local_error->message);
-    }
-}
-
 /* Main handler for incoming D-Bus method calls. */
 static void
 mws_schedule_service_entry_method_call (GDBusConnection       *connection,
@@ -1167,6 +1138,39 @@ mws_schedule_service_scheduler_properties_get_all (MwsScheduleService    *self,
                                            interface_name);
 }
 
+typedef struct
+{
+  MwsScheduleService *schedule_service;  /* (unowned) */
+  GDBusMethodInvocation *invocation;  /* (owned) */
+  MwsScheduleEntry *entry;  /* (owned) */
+} ScheduleData;
+
+static ScheduleData *
+schedule_data_new (MwsScheduleService    *schedule_service,
+                   GDBusMethodInvocation *invocation,
+                   MwsScheduleEntry      *entry)
+{
+  ScheduleData *data = g_new0 (ScheduleData, 1);
+  data->schedule_service = schedule_service;
+  data->invocation = g_object_ref (invocation);
+  data->entry = g_object_ref (entry);
+  return data;
+}
+
+static void
+schedule_data_free (ScheduleData *data)
+{
+  g_clear_object (&data->invocation);
+  g_clear_object (&data->entry);
+  g_free (data);
+}
+
+G_DEFINE_AUTOPTR_CLEANUP_FUNC (ScheduleData, schedule_data_free)
+
+static void schedule_cb (GObject      *obj,
+                         GAsyncResult *result,
+                         gpointer      user_data);
+
 static void
 mws_schedule_service_scheduler_schedule (MwsScheduleService    *self,
                                          GDBusConnection       *connection,
@@ -1175,14 +1179,6 @@ mws_schedule_service_scheduler_schedule (MwsScheduleService    *self,
                                          GDBusMethodInvocation *invocation)
 {
   g_autoptr(GError) local_error = NULL;
-
-  /* Unconditionally watch the peer, so we can remove the schedule entry again
-   * if the peer disappears. */
-  guint watch_id = g_bus_watch_name_on_connection (connection, sender,
-                                                   G_BUS_NAME_WATCHER_FLAGS_NONE,
-                                                   NULL, peer_vanished_cb,
-                                                   self, NULL);
-  g_ptr_array_add (self->peer_watch_ids, GUINT_TO_POINTER (watch_id));
 
   /* Create a schedule entry, validating the parameters at the time. */
   g_autoptr(GVariant) properties_variant = NULL;
@@ -1197,6 +1193,39 @@ mws_schedule_service_scheduler_schedule (MwsScheduleService    *self,
                                              G_DBUS_ERROR_INVALID_ARGS,
                                              _("Invalid schedule entry parameters: %s"),
                                              local_error->message);
+      return;
+    }
+
+  /* Load the peer’s credentials and watch to see if it disappears in future (to
+   * allow removing all its schedule entries). The credentials will allow the
+   * scheduler to prioritise entries by sender. */
+  mws_peer_manager_ensure_peer_credentials_async (mws_scheduler_get_peer_manager (self->scheduler),
+                                                  sender, self->cancellable,
+                                                  schedule_cb,
+                                                  schedule_data_new (self, invocation, entry));
+}
+
+static void
+schedule_cb (GObject      *obj,
+             GAsyncResult *result,
+             gpointer      user_data)
+{
+  MwsPeerManager *peer_manager = MWS_PEER_MANAGER (obj);
+  g_autoptr(ScheduleData) data = user_data;
+  MwsScheduleService *self = data->schedule_service;
+  GDBusMethodInvocation *invocation = data->invocation;
+  MwsScheduleEntry *entry = data->entry;
+  g_autoptr(GError) local_error = NULL;
+
+  /* Finish looking up the sender. */
+  const gchar *sender_path = NULL;
+  sender_path = mws_peer_manager_ensure_peer_credentials_finish (peer_manager,
+                                                                 result, &local_error);
+
+  if (sender_path == NULL)
+    {
+      g_prefix_error (&local_error, _("Error adding entry to scheduler: "));
+      g_dbus_method_invocation_return_gerror (invocation, local_error);
       return;
     }
 

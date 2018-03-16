@@ -25,6 +25,7 @@
 #include <glib.h>
 #include <glib-object.h>
 #include <libmogwai-schedule/connection-monitor.h>
+#include <libmogwai-schedule/peer-manager.h>
 #include <libmogwai-schedule/schedule-entry.h>
 
 G_BEGIN_DECLS
@@ -33,6 +34,8 @@ G_BEGIN_DECLS
  * MwsSchedulerError:
  * @MWS_SCHEDULER_ERROR_FULL: There are enough schedule entries in the scheduler
  *    and it has hit its resource limits.
+ * @MWS_SCHEDULER_ERROR_IDENTIFYING_PEER: A peer which was requesting a schedule
+ *    entry to be added could not be identified.
  *
  * Errors which can be returned by #MwsScheduler.
  *
@@ -41,8 +44,9 @@ G_BEGIN_DECLS
 typedef enum
 {
   MWS_SCHEDULER_ERROR_FULL = 0,
+  MWS_SCHEDULER_ERROR_IDENTIFYING_PEER,
 } MwsSchedulerError;
-#define MWS_SCHEDULER_N_ERRORS (MWS_SCHEDULER_ERROR_FULL + 1)
+#define MWS_SCHEDULER_N_ERRORS (MWS_SCHEDULER_ERROR_IDENTIFYING_PEER + 1)
 
 GQuark mws_scheduler_error_quark (void);
 #define MWS_SCHEDULER_ERROR mws_scheduler_error_quark ()
@@ -50,7 +54,10 @@ GQuark mws_scheduler_error_quark (void);
 #define MWS_TYPE_SCHEDULER mws_scheduler_get_type ()
 G_DECLARE_FINAL_TYPE (MwsScheduler, mws_scheduler, MWS, SCHEDULER, GObject)
 
-MwsScheduler     *mws_scheduler_new             (MwsConnectionMonitor *connection_monitor);
+MwsScheduler     *mws_scheduler_new             (MwsConnectionMonitor *connection_monitor,
+                                                 MwsPeerManager       *peer_manager);
+
+MwsPeerManager   *mws_scheduler_get_peer_manager (MwsScheduler     *self);
 
 gboolean          mws_scheduler_update_entries  (MwsScheduler      *self,
                                                  GPtrArray         *added,
