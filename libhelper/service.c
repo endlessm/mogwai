@@ -590,7 +590,7 @@ hlp_service_run (HlpService  *self,
       g_ptr_array_set_size (priv->option_groups, 0);
     }
 
-  g_autoptr (GError) child_error = NULL;
+  g_autoptr(GError) child_error = NULL;
 
   if (!g_option_context_parse (context, &argc, &argv, &child_error))
     {
@@ -670,7 +670,7 @@ hlp_service_run (HlpService  *self,
 
   if (child_error != NULL)
     {
-      g_propagate_error (error, child_error);
+      g_propagate_error (error, g_steal_pointer (&child_error));
       hlp_service_release (self);
       return;
     }
