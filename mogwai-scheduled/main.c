@@ -33,8 +33,8 @@ int
 main (int   argc,
       char *argv[])
 {
-  g_autoptr (GError) error = NULL;
-  g_autoptr (MwsService) service = NULL;
+  g_autoptr(GError) error = NULL;
+  g_autoptr(MwsService) service = NULL;
 
   /* Set up a D-Bus service and run until we are killed. */
   service = mws_service_new ();

@@ -420,7 +420,7 @@ name_lost_cb (GDBusConnection *connection,
               gpointer         user_data)
 {
   HlpService *self = HLP_SERVICE (user_data);
-  g_autoptr (GError) error = NULL;
+  g_autoptr(GError) error = NULL;
 
   hlp_service_release (self);
 
@@ -437,7 +437,7 @@ inactivity_timeout_cb (gpointer user_data)
 
   if (priv->hold_count == 0)
     {
-      g_autoptr (GError) local_error = NULL;
+      g_autoptr(GError) local_error = NULL;
       g_set_error_literal (&local_error, HLP_SERVICE_ERROR, HLP_SERVICE_ERROR_TIMEOUT,
                            _("Inactivity timeout reached; exiting."));
       hlp_service_exit (self, local_error, 0);
@@ -566,7 +566,7 @@ hlp_service_run (HlpService  *self,
   g_source_attach (priv->sigterm_source, priv->context);
 
   /* Handle command line parameters. */
-  g_autoptr (GOptionContext) context = g_option_context_new (priv->parameter_string);
+  g_autoptr(GOptionContext) context = g_option_context_new (priv->parameter_string);
   g_option_context_set_summary (context, priv->summary);
   g_option_context_add_main_entries (context, entries,
                                      priv->translation_domain);
@@ -631,7 +631,7 @@ hlp_service_run (HlpService  *self,
       return;
     }
 
-  g_autoptr (GAsyncResult) connection_result = NULL;
+  g_autoptr(GAsyncResult) connection_result = NULL;
   g_dbus_connection_new_for_address (bus_address,
                                      G_DBUS_CONNECTION_FLAGS_AUTHENTICATION_CLIENT |
                                      G_DBUS_CONNECTION_FLAGS_MESSAGE_BUS_CONNECTION,
@@ -657,7 +657,7 @@ hlp_service_run (HlpService  *self,
     }
 
   /* Start up. */
-  g_autoptr (GAsyncResult) startup_result = NULL;
+  g_autoptr(GAsyncResult) startup_result = NULL;
   g_assert (service_class->startup_async != NULL &&
             service_class->startup_finish != NULL);
   service_class->startup_async (self, priv->cancellable, result_cb,
@@ -734,7 +734,7 @@ hlp_service_exit (HlpService   *self,
                   const GError *error,
                   int           signum)
 {
-  g_autoptr (GError) allocated_error = NULL;
+  g_autoptr(GError) allocated_error = NULL;
 
   g_return_if_fail (HLP_IS_SERVICE (self));
   g_return_if_fail (error == NULL || signum == 0);
