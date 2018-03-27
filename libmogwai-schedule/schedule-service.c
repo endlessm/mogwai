@@ -515,7 +515,7 @@ entry_notify_cb (GObject    *obj,
 {
   MwsScheduleService *self = MWS_SCHEDULE_SERVICE (user_data);
   MwsScheduleEntry *entry = MWS_SCHEDULE_ENTRY (obj);
-  g_autoptr (GError) local_error = NULL;
+  g_autoptr(GError) local_error = NULL;
 
   /* Propagate the signal as a D-Bus signal. */
   const gchar *property_name = g_param_spec_get_name (pspec);
@@ -852,7 +852,7 @@ mws_schedule_service_entry_properties_get (MwsScheduleService    *self,
     return;
 
   /* Try the property. */
-  g_autoptr (GVariant) value = NULL;
+  g_autoptr(GVariant) value = NULL;
 
   if (g_str_equal (interface_name, "com.endlessm.DownloadManager1.ScheduleEntry"))
     {
@@ -953,7 +953,7 @@ mws_schedule_service_entry_properties_get_all (MwsScheduleService    *self,
     return;
 
   /* Try the interface. */
-  g_autoptr (GVariantDict) dict = NULL;
+  g_autoptr(GVariantDict) dict = NULL;
 
   if (g_str_equal (interface_name, "com.endlessm.DownloadManager1.ScheduleEntry"))
     {

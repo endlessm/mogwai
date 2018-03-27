@@ -540,9 +540,9 @@ mws_scheduler_update_entries (MwsScheduler  *self,
   g_return_val_if_fail (MWS_IS_SCHEDULER (self), FALSE);
   g_return_val_if_fail (error == NULL || *error == NULL, FALSE);
 
-  g_autoptr (GPtrArray) actually_added = NULL;  /* (element-type MwsScheduleEntry) */
+  g_autoptr(GPtrArray) actually_added = NULL;  /* (element-type MwsScheduleEntry) */
   actually_added = g_ptr_array_new_with_free_func (g_object_unref);
-  g_autoptr (GPtrArray) actually_removed = NULL;  /* (element-type MwsScheduleEntry) */
+  g_autoptr(GPtrArray) actually_removed = NULL;  /* (element-type MwsScheduleEntry) */
   actually_removed = g_ptr_array_new_with_free_func (g_object_unref);
 
   /* Check resource limits. */

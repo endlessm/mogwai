@@ -454,7 +454,7 @@ int
 main (int   argc,
       char *argv[])
 {
-  g_autoptr (GError) error = NULL;
+  g_autoptr(GError) error = NULL;
 
   /* Localisation */
   setlocale (LC_ALL, "");

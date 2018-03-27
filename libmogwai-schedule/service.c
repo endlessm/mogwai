@@ -121,7 +121,7 @@ mws_service_startup_async (HlpService          *service,
                            GAsyncReadyCallback  callback,
                            gpointer             user_data)
 {
-  g_autoptr (GTask) task = g_task_new (service, cancellable, callback, user_data);
+  g_autoptr(GTask) task = g_task_new (service, cancellable, callback, user_data);
   g_task_set_source_tag (task, mws_service_startup_async);
 
   /* Get a connection monitor first. */
