@@ -75,13 +75,38 @@ static const GDBusMethodInfo *scheduler_interface_methods[] =
   NULL,
 };
 
+static const GDBusPropertyInfo scheduler_interface_entry_count =
+{
+  -1, /* ref count */
+  "EntryCount",
+  "u",
+  G_DBUS_PROPERTY_INFO_FLAGS_READABLE,
+  NULL,  /* annotations */
+};
+
+static const GDBusPropertyInfo scheduler_interface_active_entry_count =
+{
+  -1, /* ref count */
+  "ActiveEntryCount",
+  "u",
+  G_DBUS_PROPERTY_INFO_FLAGS_READABLE,
+  NULL,  /* annotations */
+};
+
+static const GDBusPropertyInfo *scheduler_interface_properties[] =
+{
+  &scheduler_interface_entry_count,
+  &scheduler_interface_active_entry_count,
+  NULL,
+};
+
 static const GDBusInterfaceInfo scheduler_interface =
 {
   -1,  /* ref count */
   (gchar *) "com.endlessm.DownloadManager1.Scheduler",
   (GDBusMethodInfo **) scheduler_interface_methods,
   NULL,  /* no signals */
-  NULL,  /* no properties */
+  (GDBusPropertyInfo **) scheduler_interface_properties,
   NULL,  /* no annotations */
 };
 

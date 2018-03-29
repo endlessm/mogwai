@@ -420,6 +420,69 @@ schedule_entry_to_object_path (MwsScheduleService *self,
 }
 
 static void
+count_entries (MwsScheduleService *self,
+               guint32            *out_entry_count,
+               guint32            *out_active_entry_count)
+{
+  GHashTable *entries;  /* (element-type utf8 MwsScheduleEntry) */
+  entries = mws_scheduler_get_entries (self->scheduler);
+
+  GHashTableIter iter;
+  gpointer value;
+  guint32 active_entries = 0;
+
+  g_assert (out_entry_count != NULL);
+  g_assert (out_active_entry_count != NULL);
+
+  g_hash_table_iter_init (&iter, entries);
+  while (g_hash_table_iter_next (&iter, NULL, &value))
+    {
+      MwsScheduleEntry *entry = MWS_SCHEDULE_ENTRY (value);
+
+      if (mws_scheduler_is_entry_active (self->scheduler, entry))
+        active_entries++;
+    }
+
+  *out_entry_count = (guint32) g_hash_table_size (entries);
+  *out_active_entry_count = active_entries;
+
+  g_assert (*out_active_entry_count <= *out_entry_count);
+}
+
+static void
+notify_scheduler_properties (MwsScheduleService *self)
+{
+  g_auto(GVariantDict) changed_properties_dict = G_VARIANT_DICT_INIT (NULL);
+  guint32 entries, active_entries;
+
+  count_entries (self, &entries, &active_entries);
+
+  g_variant_dict_insert (&changed_properties_dict,
+                         "ActiveEntryCount", "u", active_entries);
+  g_variant_dict_insert (&changed_properties_dict,
+                         "EntryCount", "u", entries);
+
+  g_autoptr(GVariant) parameters = NULL;
+  parameters = g_variant_ref_sink (
+      g_variant_new ("(s@a{sv}as)",
+                     "com.endlessm.DownloadManager1.Scheduler",
+                     g_variant_dict_end (&changed_properties_dict),
+                     NULL));
+
+  g_autoptr(GError) local_error = NULL;
+  g_dbus_connection_emit_signal (self->connection,
+                                 NULL,  /* broadcast */
+                                 "/com/endlessm/DownloadManager1/Scheduler",
+                                 "org.freedesktop.DBus.Properties",
+                                 "PropertiesChanged",
+                                 parameters,
+                                 &local_error);
+  if (local_error != NULL)
+    g_debug ("Error emitting PropertiesChanged signal: %s",
+             local_error->message);
+}
+
+static void
 entries_changed_cb (MwsScheduler *scheduler,
                     GPtrArray    *added,
                     GPtrArray    *removed,
@@ -445,6 +508,13 @@ entries_changed_cb (MwsScheduler *scheduler,
 
       g_signal_connect (entry, "notify",
                         (GCallback) entry_notify_cb, self);
+    }
+
+  /* The com.endlessm.DownloadManager1.Scheduler properties potentially changed */
+  if (((added == NULL) != (removed == NULL)) ||
+      (added != NULL && removed != NULL && added->len != removed->len))
+    {
+      notify_scheduler_properties (self);
     }
 
   /* This will potentially have changed. */
@@ -506,6 +576,13 @@ active_entries_changed_cb (MwsScheduler *scheduler,
   /* These entries have become active (told they can start downloading).
    * Signal that on the bus. */
   emit_download_now_changed (self, added, TRUE);
+
+  /* The com.endlessm.DownloadManager1.Scheduler properties potentially changed */
+  if (((added == NULL) != (removed == NULL)) ||
+      (added != NULL && removed != NULL && added->len != removed->len))
+    {
+      notify_scheduler_properties (self);
+    }
 }
 
 static void
@@ -1086,12 +1163,29 @@ mws_schedule_service_scheduler_properties_get (MwsScheduleService    *self,
   if (!validate_dbus_interface_name (invocation, interface_name))
     return;
 
-  /* No properties exposed. */
-  g_dbus_method_invocation_return_error (invocation, G_DBUS_ERROR,
-                                         G_DBUS_ERROR_UNKNOWN_PROPERTY,
-                                         _("Unknown property ‘%s.%s’."),
-                                         interface_name, property_name);
-}
+  g_autoptr(GVariant) value = NULL;
+
+  if (g_str_equal (interface_name, "com.endlessm.DownloadManager1.Scheduler"))
+    {
+      guint32 entries, active_entries;
+
+      count_entries (self, &entries, &active_entries);
+
+      if (g_str_equal (property_name, "ActiveEntryCount"))
+        value = g_variant_new_uint32 (active_entries);
+      else if (g_str_equal (property_name, "EntryCount"))
+        value = g_variant_new_uint32 (entries);
+    }
+
+  if (value != NULL)
+    g_dbus_method_invocation_return_value (invocation,
+                                           g_variant_new ("(v)", g_steal_pointer (&value)));
+  else
+    g_dbus_method_invocation_return_error (invocation, G_DBUS_ERROR,
+                                           G_DBUS_ERROR_UNKNOWN_PROPERTY,
+                                           _("Unknown property ‘%s.%s’."),
+                                           interface_name, property_name);
+  }
 
 static void
 mws_schedule_service_scheduler_properties_set (MwsScheduleService    *self,
