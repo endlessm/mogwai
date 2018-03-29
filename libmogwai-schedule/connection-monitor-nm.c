@@ -67,8 +67,7 @@ static void device_state_changed_cb              (NMDevice           *device,
 static void device_notify_cb                     (GObject            *obj,
                                                   GParamSpec         *pspec,
                                                   gpointer            user_data);
-static void setting_connection_notify_cb         (GObject            *obj,
-                                                  GParamSpec         *pspec,
+static void connection_changed_cb                (NMConnection       *connection,
                                                   gpointer            user_data);
 
 static gboolean mws_connection_monitor_nm_init_failable (GInitable            *initable,
@@ -232,23 +231,23 @@ typedef struct
 {
   MwsConnectionMonitorNm *connection_monitor;  /* (unowned) (not nullable) */
   NMActiveConnection *active_connection;  /* (owned) (not nullable) */
-} SettingNotifyData;
+} ConnectionChangedData;
 
-static void setting_notify_data_free (SettingNotifyData *data);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC (SettingNotifyData, setting_notify_data_free)
+static void connection_changed_data_free (ConnectionChangedData *data);
+G_DEFINE_AUTOPTR_CLEANUP_FUNC (ConnectionChangedData, connection_changed_data_free)
 
-static SettingNotifyData *
+static ConnectionChangedData *
 setting_notify_data_new (MwsConnectionMonitorNm *connection_monitor,
                          NMActiveConnection     *active_connection)
 {
-  g_autoptr(SettingNotifyData) data = g_new0 (SettingNotifyData, 1);
+  g_autoptr(ConnectionChangedData) data = g_new0 (ConnectionChangedData, 1);
   data->connection_monitor = connection_monitor;
   data->active_connection = g_object_ref (active_connection);
   return g_steal_pointer (&data);
 }
 
 static void
-setting_notify_data_free (SettingNotifyData *data)
+connection_changed_data_free (ConnectionChangedData *data)
 {
   g_clear_object (&data->active_connection);
   g_free (data);
@@ -259,26 +258,22 @@ connection_connect (MwsConnectionMonitorNm *self,
                     NMConnection           *connection,
                     NMActiveConnection     *active_connection)
 {
-  NMSettingConnection *setting = nm_connection_get_setting_connection (connection);
-  if (setting != NULL)
-    g_signal_connect_data (setting, "notify",
-                           (GCallback) setting_connection_notify_cb,
-                           setting_notify_data_new (self, active_connection),
-                           (GClosureNotify) setting_notify_data_free,
-                           0  /* flags */);
+  g_signal_connect_data (connection, "changed",
+                         (GCallback) connection_changed_cb,
+                         setting_notify_data_new (self, active_connection),
+                         (GClosureNotify) connection_changed_data_free,
+                         0  /* flags */);
 }
 
 static void
 connection_disconnect (NMConnection *connection)
 {
-  NMSettingConnection *setting = nm_connection_get_setting_connection (connection);
-  if (setting != NULL)
-    g_signal_handlers_disconnect_matched (setting,
-                                          G_SIGNAL_MATCH_FUNC,
-                                          0  /* signal ID */, 0  /* detail */,
-                                          NULL  /* closure */,
-                                          setting_connection_notify_cb,
-                                          NULL  /* data */);
+  g_signal_handlers_disconnect_matched (connection,
+                                        G_SIGNAL_MATCH_FUNC,
+                                        0  /* signal ID */, 0  /* detail */,
+                                        NULL  /* closure */,
+                                        connection_changed_cb,
+                                        NULL  /* data */);
 }
 
 static void
@@ -791,11 +786,10 @@ device_state_changed_cb (NMDevice *device,
 }
 
 static void
-setting_connection_notify_cb (GObject    *obj,
-                              GParamSpec *pspec,
-                              gpointer    user_data)
+connection_changed_cb (NMConnection *connection,
+                       gpointer      user_data)
 {
-  SettingNotifyData *data = user_data;
+  ConnectionChangedData *data = user_data;
 
   /* Don’t bother working out what changed; just assume that it will probably
    * change our scheduling. */
