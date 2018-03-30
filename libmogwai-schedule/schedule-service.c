@@ -1224,7 +1224,7 @@ mws_schedule_service_scheduler_properties_get_all (MwsScheduleService    *self,
   /* Try the interface. */
   if (g_str_equal (interface_name, "com.endlessm.DownloadManager1.Scheduler"))
     g_dbus_method_invocation_return_value (invocation,
-                                           g_variant_new_parsed ("(@a{sv} {})"));
+                                           g_variant_new_parsed ("(@a{sv} {},)"));
   else
     g_dbus_method_invocation_return_error (invocation, G_DBUS_ERROR,
                                            G_DBUS_ERROR_UNKNOWN_INTERFACE,
