@@ -176,21 +176,32 @@ mwt_tariff_loader_load_from_bytes (MwtTariffLoader  *self,
 }
 
 /* Construct a #GDateTime from the given @unix_timestamp (always in UTC) and
- * @timezone_abbreviation. This will return %NULL if an invalid time results. */
+ * @timezone_identifier (for example, ‘Europe/London’; note that this is *not*
+ * a timezone abbreviation like ‘AST’). This will return %NULL if an invalid
+ * time results. */
 static GDateTime *
 date_time_new_from_unix (guint64      unix_timestamp,
-                         const gchar *timezone_abbreviation)
+                         const gchar *timezone_identifier)
 {
   g_autoptr(GDateTime) utc = g_date_time_new_from_unix_utc (unix_timestamp);
   if (utc == NULL)
     return NULL;
 
   g_autoptr(GTimeZone) tz = NULL;
-  if (*timezone_abbreviation == '\0')
+  if (*timezone_identifier == '\0')
     tz = g_time_zone_new_local ();
   else
-    tz = g_time_zone_new (timezone_abbreviation);
-  g_assert (tz != NULL);  /* creating a timezone can’t actually fail */
+    tz = g_time_zone_new (timezone_identifier);
+
+  g_debug ("%s: Created timezone ‘%s’ for ‘%s’, with offset %d at interval 0",
+           G_STRFUNC, g_time_zone_get_identifier (tz), timezone_identifier,
+           g_time_zone_get_offset (tz, 0));
+
+  /* Creating a timezone can’t actually fail, but if we fail to load the
+   * timezone information, the #GTimeZone will just represent UTC. Catch that. */
+  g_assert (tz != NULL);
+  if (!g_str_equal (g_time_zone_get_identifier (tz), timezone_identifier))
+    return NULL;
 
   return g_date_time_to_timezone (utc, tz);
 }

@@ -246,17 +246,17 @@ mwt_tariff_builder_build_tariff_variant (const gchar *name,
     {
       MwtPeriod *period = g_ptr_array_index (periods, i);
       GDateTime *start = mwt_period_get_start (period);
+      GTimeZone *start_tz = g_date_time_get_timezone (start);
       GDateTime *end = mwt_period_get_end (period);
+      GTimeZone *end_tz = g_date_time_get_timezone (end);
       guint64 start_unix = g_date_time_to_unix (start);
       guint64 end_unix = g_date_time_to_unix (end);
-      const gchar *start_timezone = g_date_time_get_timezone_abbreviation (start);
-      const gchar *end_timezone = g_date_time_get_timezone_abbreviation (end);
 
       g_variant_builder_open (&builder, G_VARIANT_TYPE ("(ttssqut)"));
       g_variant_builder_add (&builder, "t", start_unix);
       g_variant_builder_add (&builder, "t", end_unix);
-      g_variant_builder_add (&builder, "s", start_timezone);
-      g_variant_builder_add (&builder, "s", end_timezone);
+      g_variant_builder_add (&builder, "s", g_time_zone_get_identifier (start_tz));
+      g_variant_builder_add (&builder, "s", g_time_zone_get_identifier (end_tz));
       g_variant_builder_add (&builder, "q", (guint16) mwt_period_get_repeat_type (period));
       g_variant_builder_add (&builder, "u", (guint32) mwt_period_get_repeat_period (period));
       g_variant_builder_add (&builder, "t", mwt_period_get_capacity_limit (period));
