@@ -510,6 +510,26 @@ entries_changed_cb (MwsScheduler *scheduler,
                         (GCallback) entry_notify_cb, self);
     }
 
+  /* Emit Removed signals for entries. */
+  for (gsize i = 0; removed != NULL && i < removed->len; i++)
+    {
+      MwsScheduleEntry *entry = MWS_SCHEDULE_ENTRY (removed->pdata[i]);
+      g_autoptr(GError) local_error = NULL;
+
+      g_autofree gchar *entry_path = schedule_entry_to_object_path (self, entry);
+
+      g_dbus_connection_emit_signal (self->connection,
+                                     mws_schedule_entry_get_owner (entry),
+                                     entry_path,
+                                     "com.endlessm.DownloadManager1.ScheduleEntry",
+                                     "Removed",
+                                     NULL,  /* no arguments */
+                                     &local_error);
+      if (local_error != NULL)
+        g_debug ("Error emitting Removed signal for ‘%s’: %s",
+                 local_error->message, entry_path);
+    }
+
   /* The com.endlessm.DownloadManager1.Scheduler properties potentially changed */
   if (((added == NULL) != (removed == NULL)) ||
       (added != NULL && removed != NULL && added->len != removed->len))
