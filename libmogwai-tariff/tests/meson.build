@@ -37,7 +37,7 @@ foreach program: test_programs
 
   exe = executable(
     program[0],
-    [program[0] + '.c'] + program[1],
+    [program[0] + '.c', 'common.c', 'common.h'] + program[1],
     dependencies: program[2],
     include_directories: root_inc,
     install: enable_installed_tests,

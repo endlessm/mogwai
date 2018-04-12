@@ -27,31 +27,7 @@
 #include <libmogwai-tariff/tariff-builder.h>
 #include <locale.h>
 
-
-/* Utility methods. */
-static void
-assert_periods_equal (MwtPeriod *period1,
-                      MwtPeriod *period2)
-{
-  g_assert_true (MWT_IS_PERIOD (period1));
-  g_assert_true (MWT_IS_PERIOD (period2));
-
-  GDateTime *period1_start = mwt_period_get_start (period1);
-  GDateTime *period1_end = mwt_period_get_end (period1);
-  GDateTime *period2_start = mwt_period_get_start (period2);
-  GDateTime *period2_end = mwt_period_get_end (period2);
-
-  g_assert_true (g_date_time_equal (period1_start, period2_start));
-  g_assert_true (g_date_time_equal (period1_end, period2_end));
-
-  g_assert_cmpint (mwt_period_get_repeat_type (period1), ==,
-                   mwt_period_get_repeat_type (period2));
-  g_assert_cmpuint (mwt_period_get_repeat_period (period1), ==,
-                    mwt_period_get_repeat_period (period2));
-
-  g_assert_cmpuint (mwt_period_get_capacity_limit (period1), ==,
-                    mwt_period_get_capacity_limit (period2));
-}
+#include "common.h"
 
 /* Test resetting an empty tariff builder doesn’t crash. */
 static void
