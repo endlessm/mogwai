@@ -49,6 +49,20 @@ static const GDBusMethodInfo *schedule_entry_interface_methods[] =
   NULL,
 };
 
+static const GDBusSignalInfo schedule_entry_interface_removed =
+{
+  -1,  /* ref count */
+  (gchar *) "Removed",
+  NULL,  /* no args */
+  NULL,  /* annotations */
+};
+
+static const GDBusSignalInfo *schedule_entry_interface_signals[] =
+{
+  &schedule_entry_interface_removed,
+  NULL,
+};
+
 static const GDBusPropertyInfo schedule_entry_interface_download_now =
 {
   -1,  /* ref count */
@@ -87,7 +101,7 @@ static const GDBusInterfaceInfo schedule_entry_interface =
   -1,  /* ref count */
   (gchar *) "com.endlessm.DownloadManager1.ScheduleEntry",
   (GDBusMethodInfo **) schedule_entry_interface_methods,
-  NULL,  /* no signals */
+  (GDBusSignalInfo **) schedule_entry_interface_signals,
   (GDBusPropertyInfo **) schedule_entry_interface_properties,
   NULL,  /* no annotations */
 };
