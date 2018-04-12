@@ -908,6 +908,9 @@ mws_scheduler_reschedule (MwsScheduler *self)
   g_autoptr(GDateTime) now = g_date_time_new_now_local ();
   g_autoptr(GDateTime) next_reschedule = NULL;
 
+  g_autofree gchar *now_str = g_date_time_format (now, "%FT%T%:::z");
+  g_debug ("%s: Considering now = %s", G_STRFUNC, now_str);
+
   /* For each entry, see if it’s permissible to start downloading it. For the
    * moment, we only use whether the network is metered as a basis for this
    * calculation. In future, we can factor in the tariff on each connection,
@@ -956,6 +959,21 @@ mws_scheduler_reschedule (MwsScheduler *self)
           if (details->tariff != NULL)
             {
               tariff_period = mwt_tariff_lookup_period (details->tariff, now);
+            }
+
+          if (tariff_period != NULL)
+            {
+              g_autofree gchar *tariff_period_start_str =
+                  g_date_time_format (mwt_period_get_start (tariff_period), "%FT%T%:::z");
+              g_autofree gchar *tariff_period_end_str =
+                  g_date_time_format (mwt_period_get_end (tariff_period), "%FT%T%:::z");
+              g_debug ("%s: Considering tariff period %p: %s to %s",
+                       G_STRFUNC, tariff_period, tariff_period_start_str,
+                       tariff_period_end_str);
+            }
+          else
+            {
+              g_debug ("%s: No tariff period found", G_STRFUNC);
             }
 
           if (tariff_period != NULL)
