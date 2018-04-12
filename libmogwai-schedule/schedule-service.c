@@ -527,7 +527,7 @@ entries_changed_cb (MwsScheduler *scheduler,
                                      &local_error);
       if (local_error != NULL)
         g_debug ("Error emitting Removed signal for ‘%s’: %s",
-                 local_error->message, entry_path);
+                 entry_path, local_error->message);
     }
 
   /* The com.endlessm.DownloadManager1.Scheduler properties potentially changed */
