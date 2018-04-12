@@ -36,12 +36,20 @@ assert_periods_equal (MwtPeriod *period1,
   g_assert_true (MWT_IS_PERIOD (period2));
 
   GDateTime *period1_start = mwt_period_get_start (period1);
+  GTimeZone *period1_start_tz = g_date_time_get_timezone (period1_start);
   GDateTime *period1_end = mwt_period_get_end (period1);
+  GTimeZone *period1_end_tz = g_date_time_get_timezone (period1_end);
   GDateTime *period2_start = mwt_period_get_start (period2);
+  GTimeZone *period2_start_tz = g_date_time_get_timezone (period2_start);
   GDateTime *period2_end = mwt_period_get_end (period2);
+  GTimeZone *period2_end_tz = g_date_time_get_timezone (period2_end);
 
   g_assert_true (g_date_time_equal (period1_start, period2_start));
+  g_assert_cmpstr (g_time_zone_get_identifier (period1_start_tz), ==,
+                   g_time_zone_get_identifier (period2_start_tz));
   g_assert_true (g_date_time_equal (period1_end, period2_end));
+  g_assert_cmpstr (g_time_zone_get_identifier (period1_end_tz), ==,
+                   g_time_zone_get_identifier (period2_end_tz));
 
   g_assert_cmpint (mwt_period_get_repeat_type (period1), ==,
                    mwt_period_get_repeat_type (period2));
