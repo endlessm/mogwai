@@ -301,8 +301,9 @@ mwsc_schedule_entry_class_init (MwscScheduleEntryClass *klass)
    *
    * Emitted when the backing object underlying this #MwscScheduleEntry
    * disappears, or it is otherwise disconnected (due to, for example,
-   * providing invalid data). The most common reason for this signal to be
-   * emitted is if the underlying D-Bus object disappears.
+   * providing invalid data). The most common reasons for this signal to be
+   * emitted are if the underlying D-Bus object disappears, or if the schedule
+   * entry is removed by calling mwsc_schedule_entry_remove_async().
    *
    * After this signal is emitted, all method calls to #MwscScheduleEntry
    * methods will return %MWSC_SCHEDULE_ENTRY_ERROR_INVALIDATED.
