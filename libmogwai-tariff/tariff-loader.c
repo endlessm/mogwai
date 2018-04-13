@@ -241,6 +241,12 @@ mwt_tariff_loader_load_from_variant (MwtTariffLoader  *self,
                            _("Input data is not in normal form."));
       return FALSE;
     }
+  if (!g_variant_is_of_type (variant, G_VARIANT_TYPE ("(sqv)")))
+    {
+      g_set_error_literal (error, MWT_TARIFF_ERROR, MWT_TARIFF_ERROR_INVALID,
+                           _("Input data does not have correct type."));
+      return FALSE;
+    }
 
   guint16 format_version;
   const gchar *format_magic;

@@ -41,7 +41,7 @@ test_tariff_loader_unloaded (void)
 /* Test the tariff loader handles erroneous files gracefully.
  * Note: These bytes are in version 1 format. */
 static void
-test_tariff_loader_errors (void)
+test_tariff_loader_errors_bytes (void)
 {
   const struct
     {
@@ -111,6 +111,41 @@ test_tariff_loader_errors (void)
     }
 }
 
+/* Test the tariff loader handles erroneous files gracefully, when loading them
+ * from a #GVariant. */
+static void
+test_tariff_loader_errors_variant (void)
+{
+  const gchar *vectors[] =
+    {
+      /* Invalid inner variant */
+      "('Mogwai tariff', @q 2, <''>)",
+      /* Invalid version number */
+      "('Mogwai tariff', @q 0, <@(sa(ttssqut)) ('a', [(0, 1, 'UTC', 'UTC', 0, 0, 0)])>)",
+      /* Invalid magic */
+      "('not magic', @q 2, <@(sa(ttssqut)) ('a', [(0, 1, 'UTC', 'UTC', 0, 0, 0)])>)",
+      /* Invalid outer type */
+      "('hello there', @q 1)",
+      "'boo'",
+    };
+
+  g_autoptr(MwtTariffLoader) loader = NULL;
+  loader = mwt_tariff_loader_new ();
+
+  for (gsize i = 0; i < G_N_ELEMENTS (vectors); i++)
+    {
+      g_autoptr(GError) local_error = NULL;
+      g_autoptr(GVariant) variant = g_variant_parse (NULL, vectors[i],
+                                                     NULL, NULL, &local_error);
+      g_assert_no_error (local_error);
+
+      gboolean retval = mwt_tariff_loader_load_from_variant (loader, variant, &local_error);
+      g_assert_error (local_error, MWT_TARIFF_ERROR, MWT_TARIFF_ERROR_INVALID);
+      g_assert_false (retval);
+      g_assert_null (mwt_tariff_loader_get_tariff (loader));
+    }
+}
+
 /* Test loading a simple tariff from bytes works.
  * Note: These bytes are in version 1 format. */
 static void
@@ -169,6 +204,46 @@ test_tariff_loader_simple_bytes (void)
   g_assert_cmpuint (mwt_period_get_capacity_limit (period2), ==, G_MAXUINT64);
 }
 
+/* Test loading a simple tariff from a serialised #GVariant works. It’s not a
+ * very exciting tariff. */
+static void
+test_tariff_loader_simple_variant (void)
+{
+  g_autoptr(GError) local_error = NULL;
+
+  const gchar *variant_str =
+    "('Mogwai tariff', @q 2, <@(sa(ttssqut)) ('a', [(0, 1, 'UTC', 'UTC', 0, 0, 0)])>)";
+  g_autoptr(GVariant) variant = g_variant_parse (NULL, variant_str, NULL, NULL, &local_error);
+  g_assert_no_error (local_error);
+
+  g_autoptr(MwtTariffLoader) loader = mwt_tariff_loader_new ();
+
+  gboolean retval = mwt_tariff_loader_load_from_variant (loader, variant, &local_error);
+  g_assert_no_error (local_error);
+  g_assert_true (retval);
+
+  MwtTariff *tariff = mwt_tariff_loader_get_tariff (loader);
+  g_assert_true (MWT_IS_TARIFF (tariff));
+
+  /* Check properties. */
+  g_assert_cmpstr (mwt_tariff_get_name (tariff), ==, "a");
+
+  GPtrArray *periods = mwt_tariff_get_periods (tariff);
+  g_assert_cmpuint (periods->len, ==, 1);
+
+  g_autoptr(GDateTime) period1_start_expected = g_date_time_new_utc (1970, 1, 1, 0, 0, 0);
+  g_autoptr(GDateTime) period1_end_expected = g_date_time_new_utc (1970, 1, 1, 0, 0, 1);
+
+  MwtPeriod *period1 = g_ptr_array_index (periods, 0);
+  GDateTime *period1_start = mwt_period_get_start (period1);
+  GDateTime *period1_end = mwt_period_get_end (period1);
+  g_assert_true (g_date_time_equal (period1_start, period1_start_expected));
+  g_assert_true (g_date_time_equal (period1_end, period1_end_expected));
+  g_assert_cmpint (mwt_period_get_repeat_type (period1), ==, MWT_PERIOD_REPEAT_NONE);
+  g_assert_cmpuint (mwt_period_get_repeat_period (period1), ==, 0);
+  g_assert_cmpuint (mwt_period_get_capacity_limit (period1), ==, 0);
+}
+
 /* Test that loading a tariff with no periods fails gracefully.
  * Note: These bytes are in version 1 format. */
 static void
@@ -225,8 +300,10 @@ main (int    argc,
   g_test_init (&argc, &argv, NULL);
 
   g_test_add_func ("/tariff-loader/unloaded", test_tariff_loader_unloaded);
-  g_test_add_func ("/tariff-loader/errors", test_tariff_loader_errors);
+  g_test_add_func ("/tariff-loader/errors/bytes", test_tariff_loader_errors_bytes);
+  g_test_add_func ("/tariff-loader/errors/variant", test_tariff_loader_errors_variant);
   g_test_add_func ("/tariff-loader/simple/bytes", test_tariff_loader_simple_bytes);
+  g_test_add_func ("/tariff-loader/simple/variant", test_tariff_loader_simple_variant);
   g_test_add_func ("/tariff-loader/empty", test_tariff_loader_empty);
   g_test_add_func ("/tariff-loader/empty/byteswapped",
                    test_tariff_loader_empty_byteswapped);
