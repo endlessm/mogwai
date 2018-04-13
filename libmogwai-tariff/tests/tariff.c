@@ -25,7 +25,11 @@
 #include <glib.h>
 #include <gio/gio.h>
 #include <libmogwai-tariff/tariff.h>
+#include <libmogwai-tariff/tariff-builder.h>
+#include <libmogwai-tariff/tariff-loader.h>
 #include <locale.h>
+
+#include "common.h"
 
 
 /* Test the GObject properties on a tariff. */
@@ -562,6 +566,74 @@ test_tariff_next_transition (void)
   g_assert_true (to_period == period3a);
 }
 
+/* Test that serialising a tariff with #MwtTariffBuilder, then loading it with
+ * #MwtTariffLoader, gives an identical tariff to the original one. Particularly,
+ * we care that the timezones have not changed. */
+static void
+test_tariff_serialisation_roundtrip (void)
+{
+  g_autoptr(MwtTariffBuilder) builder = NULL;
+
+  /* Build the tariff. */
+  builder = mwt_tariff_builder_new ();
+  mwt_tariff_builder_set_name (builder, "test-tariff");
+
+  /* Period 1. */
+  g_autoptr(GTimeZone) start1_tz = g_time_zone_new ("Europe/London");
+  g_autoptr(GDateTime) start1 = g_date_time_new (start1_tz, 2018, 1, 1, 0, 0, 0);
+  g_autoptr(GTimeZone) end1_tz = g_time_zone_new ("America/Atka");
+  g_autoptr(GDateTime) end1 = g_date_time_new (end1_tz, 2018, 2, 1, 0, 0, 0);
+
+  g_autoptr(MwtPeriod) period1 = NULL;
+  period1 = mwt_period_new (start1, end1, MWT_PERIOD_REPEAT_MONTH, 1,
+                            "capacity-limit", G_GUINT64_CONSTANT (2 * 1000 * 1000 * 1000),
+                            NULL);
+  mwt_tariff_builder_add_period (builder, period1);
+
+  /* Period 2. */
+  g_autoptr(GDateTime) start2 = g_date_time_new_utc (2018, 1, 6, 0, 0, 0);
+  g_autoptr(GDateTime) end2 = g_date_time_new_utc (2018, 1, 8, 0, 0, 0);
+
+  g_autoptr(MwtPeriod) period2 = NULL;
+  period2 = mwt_period_new (start2, end2, MWT_PERIOD_REPEAT_WEEK, 1,
+                            "capacity-limit", G_MAXUINT64,
+                            NULL);
+  mwt_tariff_builder_add_period (builder, period2);
+
+  /* Finish building the tariff and get it in variant form. */
+  g_autoptr(MwtTariff) built_tariff = NULL;
+  built_tariff = mwt_tariff_builder_get_tariff (builder);
+
+  g_autoptr(GVariant) variant = NULL;
+  variant = mwt_tariff_builder_get_tariff_as_variant (builder);
+
+  /* Load it again. */
+  g_autoptr(MwtTariffLoader) loader = mwt_tariff_loader_new ();
+  g_autoptr(GError) local_error = NULL;
+
+  gboolean retval = mwt_tariff_loader_load_from_variant (loader, variant, &local_error);
+  g_assert_no_error (local_error);
+  g_assert_true (retval);
+
+  MwtTariff *loaded_tariff = mwt_tariff_loader_get_tariff (loader);
+
+  /* Check properties. */
+  g_assert_cmpstr (mwt_tariff_get_name (loaded_tariff), ==,
+                   mwt_tariff_get_name (built_tariff));
+
+  GPtrArray *built_periods = mwt_tariff_get_periods (built_tariff);
+  GPtrArray *loaded_periods = mwt_tariff_get_periods (loaded_tariff);
+  g_assert_cmpuint (loaded_periods->len, ==, built_periods->len);
+
+  for (gsize i = 0; i < loaded_periods->len; i++)
+    {
+      MwtPeriod *built_period = g_ptr_array_index (built_periods, i);
+      MwtPeriod *loaded_period = g_ptr_array_index (loaded_periods, i);
+
+      assert_periods_equal (loaded_period, built_period);
+    }
+}
+
 int
 main (int    argc,
       char **argv)
@@ -572,6 +644,7 @@ main (int    argc,
   g_test_add_func ("/tariff/properties", test_tariff_properties);
   g_test_add_func ("/tariff/lookup", test_tariff_lookup);
   g_test_add_func ("/tariff/next-transition", test_tariff_next_transition);
+  g_test_add_func ("/tariff/serialisation/roundtrip", test_tariff_serialisation_roundtrip);
 
   return g_test_run ();
 }
