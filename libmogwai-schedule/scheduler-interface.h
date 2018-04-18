@@ -70,9 +70,45 @@ static const GDBusMethodInfo scheduler_interface_schedule =
   NULL,  /* annotations */
 };
 
+static const GDBusArgInfo scheduler_interface_schedule_entries_arg_properties =
+{
+  -1,  /* ref count */
+  (gchar *) "properties",
+  (gchar *) "aa{sv}",
+  NULL
+};
+
+static const GDBusArgInfo scheduler_interface_schedule_entries_arg_entries =
+{
+  -1,  /* ref count */
+  (gchar *) "entry_array",
+  (gchar *) "ao",
+  NULL
+};
+
+static const GDBusArgInfo *scheduler_interface_schedule_entries_in_args[] =
+{
+  &scheduler_interface_schedule_entries_arg_properties,
+  NULL,
+};
+static const GDBusArgInfo *scheduler_interface_schedule_entries_out_args[] =
+{
+  &scheduler_interface_schedule_entries_arg_entries,
+  NULL,
+};
+static const GDBusMethodInfo scheduler_interface_schedule_entries =
+{
+  -1,  /* ref count */
+  (gchar *) "ScheduleEntries",
+  (GDBusArgInfo **) scheduler_interface_schedule_entries_in_args,
+  (GDBusArgInfo **) scheduler_interface_schedule_entries_out_args,
+  NULL,  /* annotations */
+};
+
 static const GDBusMethodInfo *scheduler_interface_methods[] =
 {
   &scheduler_interface_schedule,
+  &scheduler_interface_schedule_entries,
   NULL,
 };
 
