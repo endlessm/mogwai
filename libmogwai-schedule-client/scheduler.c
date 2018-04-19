@@ -729,9 +729,6 @@ mwsc_scheduler_new_full_finish (GAsyncResult  *result,
 static void schedule_cb (GObject      *obj,
                          GAsyncResult *result,
                          gpointer      user_data);
-static void proxy_cb    (GObject      *obj,
-                         GAsyncResult *result,
-                         gpointer      user_data);
 
 /**
  * mwsc_scheduler_schedule_async:
@@ -776,14 +773,26 @@ mwsc_scheduler_schedule_async (MwscScheduler       *self,
   if (!check_invalidated (self, task))
     return;
 
-  g_dbus_proxy_call (self->proxy,
-                     "Schedule",
-                     g_variant_new ("(@a{sv})", parameters),
-                     G_DBUS_CALL_FLAGS_NONE,
-                     -1,  /* default timeout */
-                     cancellable,
-                     schedule_cb,
-                     g_steal_pointer (&task));
+  g_autoptr(GPtrArray) parameters_array = g_ptr_array_new_with_free_func (NULL);
+  g_ptr_array_add (parameters_array, parameters);
+  mwsc_scheduler_schedule_entries_async (self, parameters_array, cancellable,
+                                         schedule_cb, g_steal_pointer (&task));
+}
+
+/* Steal the given element from the array. This assumes the array’s free
+ * function is g_object_unref().
+ *
+ * FIXME: Use g_ptr_array_steal_index_fast() when we have a version of GLib
+ * supporting it. See: https://bugzilla.gnome.org/show_bug.cgi?id=795376. */
+static gpointer
+ptr_array_steal_index_fast (GPtrArray *array,
+                            guint      index_)
+{
+  g_ptr_array_set_free_func (array, NULL);
+  g_autoptr(GObject) obj = g_ptr_array_remove_index_fast (array, index_);
+  g_ptr_array_set_free_func (array, (GDestroyNotify) g_object_unref);
+
+  return g_steal_pointer (&obj);
 }
 
 static void
@@ -791,47 +800,21 @@ schedule_cb (GObject      *obj,
              GAsyncResult *result,
              gpointer      user_data)
 {
-  GDBusProxy *proxy = G_DBUS_PROXY (obj);
+  MwscScheduler *self = MWSC_SCHEDULER (obj);
   g_autoptr(GTask) task = G_TASK (user_data);
-  MwscScheduler *self = g_task_get_source_object (task);
-  GCancellable *cancellable = g_task_get_cancellable (task);
-  g_autoptr(GError) error = NULL;
+  g_autoptr(GError) local_error = NULL;
+  g_autoptr(GPtrArray) entries = NULL;
 
-  /* Grab the schedule entry. */
-  g_autoptr(GVariant) return_value = NULL;
-  return_value = g_dbus_proxy_call_finish (proxy, result, &error);
+  entries = mwsc_scheduler_schedule_entries_finish (self, result, &local_error);
 
-  if (error != NULL)
+  if (local_error != NULL)
     {
-      g_task_return_error (task, g_steal_pointer (&error));
+      g_task_return_error (task, g_steal_pointer (&local_error));
       return;
     }
 
-  const gchar *schedule_entry_path;
-  g_variant_get (return_value, "(&o)", &schedule_entry_path);
-
-  mwsc_schedule_entry_new_full_async (g_dbus_proxy_get_connection (self->proxy),
-                                      g_dbus_proxy_get_name (self->proxy),
-                                      schedule_entry_path,
-                                      cancellable,
-                                      proxy_cb,
-                                      g_steal_pointer (&task));
-}
-
-static void
-proxy_cb (GObject      *obj,
-          GAsyncResult *result,
-          gpointer      user_data)
-{
-  g_autoptr(GTask) task = G_TASK (user_data);
-  g_autoptr(GError) error = NULL;
-
-  g_autoptr(MwscScheduleEntry) entry = mwsc_schedule_entry_new_full_finish (result, &error);
-
-  if (entry != NULL)
-    g_task_return_pointer (task, g_steal_pointer (&entry), g_object_unref);
-  else
-    g_task_return_error (task, g_steal_pointer (&error));
+  g_assert (entries->len == 1);
+  g_task_return_pointer (task, ptr_array_steal_index_fast (entries, 0), g_object_unref);
 }
 
 /**
