@@ -343,7 +343,7 @@ ensure_peer_credentials_cb (GObject      *obj,
   g_hash_table_replace (self->peer_credentials,
                         g_strdup (sender), g_strdup (sender_path));
 
-  g_task_return_pointer (task, g_strdup (sender_path), g_free);
+  g_task_return_pointer (task, g_steal_pointer (&sender_path), g_free);
 }
 
 static gchar *
