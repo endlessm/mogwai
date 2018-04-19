@@ -84,4 +84,13 @@ MwscScheduleEntry *mwsc_scheduler_schedule_finish (MwscScheduler        *self,
                                                    GAsyncResult         *result,
                                                    GError              **error);
 
+void               mwsc_scheduler_schedule_entries_async  (MwscScheduler        *self,
+                                                           GPtrArray            *parameters,
+                                                           GCancellable         *cancellable,
+                                                           GAsyncReadyCallback   callback,
+                                                           gpointer              user_data);
+GPtrArray         *mwsc_scheduler_schedule_entries_finish (MwscScheduler        *self,
+                                                           GAsyncResult         *result,
+                                                           GError              **error);
+
 G_END_DECLS
