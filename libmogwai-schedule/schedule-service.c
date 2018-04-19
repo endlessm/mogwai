@@ -1365,7 +1365,7 @@ schedule_cb (GObject      *obj,
   g_autoptr(GError) local_error = NULL;
 
   /* Finish looking up the sender. */
-  const gchar *sender_path = NULL;
+  g_autofree gchar *sender_path = NULL;
   sender_path = mws_peer_manager_ensure_peer_credentials_finish (peer_manager,
                                                                  result, &local_error);
 
