@@ -564,7 +564,8 @@ mws_scheduler_update_entries (MwsScheduler  *self,
 
       g_debug ("Removing schedule entry ‘%s’.", entry_id);
 
-      /* FIXME: Upstream a g_hash_table_steal_extended() function which combines these two. */
+      /* FIXME: Upstream a g_hash_table_steal_extended() function which combines these two.
+       * See: https://bugzilla.gnome.org/show_bug.cgi?id=795302 */
       gpointer value;
       if (g_hash_table_lookup_extended (self->entries, entry_id, NULL, &value))
         {

@@ -32,6 +32,7 @@ G_BEGIN_DECLS
  *
  * FIXME: Ideally, there would be a gdbus-codegen mode to generate just this
  * interface info, because writing it out in C is horrific.
+ * See: https://bugzilla.gnome.org/show_bug.cgi?id=795304
  */
 
 static const GDBusArgInfo scheduler_interface_schedule_arg_properties =
