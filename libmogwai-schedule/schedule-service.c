@@ -1304,10 +1304,11 @@ mws_schedule_service_scheduler_schedule_entries (MwsScheduleService    *self,
   /* Create one or more schedule entries, validating the parameters at the time. */
   if (g_str_equal (g_dbus_method_invocation_get_method_name (invocation), "Schedule"))
     {
+      g_autoptr(MwsScheduleEntry) entry = NULL;
       g_autoptr(GVariant) properties_variant = NULL;
       g_variant_get (parameters, "(@a{sv})", &properties_variant);
 
-      g_ptr_array_add (entries, mws_schedule_entry_new_from_variant (sender, properties_variant, &local_error));
+      entry = mws_schedule_entry_new_from_variant (sender, properties_variant, &local_error);
 
       if (local_error != NULL)
         {
@@ -1317,6 +1318,8 @@ mws_schedule_service_scheduler_schedule_entries (MwsScheduleService    *self,
                                                  local_error->message);
           return;
         }
+
+      g_ptr_array_add (entries, g_steal_pointer (&entry));
     }
   else if (g_str_equal (g_dbus_method_invocation_get_method_name (invocation), "ScheduleEntries"))
     {
@@ -1326,7 +1329,8 @@ mws_schedule_service_scheduler_schedule_entries (MwsScheduleService    *self,
       g_autoptr(GVariant) properties_variant = NULL;
       while (g_variant_iter_loop (properties_array_iter, "@a{sv}", &properties_variant))
         {
-          g_ptr_array_add (entries, mws_schedule_entry_new_from_variant (sender, properties_variant, &local_error));
+          g_autoptr(MwsScheduleEntry) entry = NULL;
+          entry = mws_schedule_entry_new_from_variant (sender, properties_variant, &local_error);
 
           if (local_error != NULL)
             {
@@ -1336,6 +1340,8 @@ mws_schedule_service_scheduler_schedule_entries (MwsScheduleService    *self,
                                                      local_error->message);
               return;
             }
+
+          g_ptr_array_add (entries, g_steal_pointer (&entry));
         }
     }
   else
