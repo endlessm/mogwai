@@ -36,6 +36,8 @@ G_BEGIN_DECLS
  *    and it has hit its resource limits.
  * @MWS_SCHEDULER_ERROR_IDENTIFYING_PEER: A peer which was requesting a schedule
  *    entry to be added could not be identified.
+ * @MWS_SCHEDULER_ERROR_INVALID_PARAMETERS: A schedule entry could not be
+ *    created due to having invalid parameters.
  *
  * Errors which can be returned by #MwsScheduler.
  *
@@ -45,8 +47,9 @@ typedef enum
 {
   MWS_SCHEDULER_ERROR_FULL = 0,
   MWS_SCHEDULER_ERROR_IDENTIFYING_PEER,
+  MWS_SCHEDULER_ERROR_INVALID_PARAMETERS,
 } MwsSchedulerError;
-#define MWS_SCHEDULER_N_ERRORS (MWS_SCHEDULER_ERROR_IDENTIFYING_PEER + 1)
+#define MWS_SCHEDULER_N_ERRORS (MWS_SCHEDULER_ERROR_INVALID_PARAMETERS + 1)
 
 GQuark mws_scheduler_error_quark (void);
 #define MWS_SCHEDULER_ERROR mws_scheduler_error_quark ()

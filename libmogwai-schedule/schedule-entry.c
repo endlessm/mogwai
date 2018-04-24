@@ -24,8 +24,10 @@
 
 #include <glib.h>
 #include <glib-object.h>
+#include <glib/gi18n-lib.h>
 #include <gio/gio.h>
 #include <libmogwai-schedule/schedule-entry.h>
+#include <libmogwai-schedule/scheduler.h>
 
 
 static void mws_schedule_entry_constructed  (GObject      *object);
@@ -315,21 +317,38 @@ mws_schedule_entry_new_from_variant (const gchar  *owner,
       g_variant_iter_init (&iter, parameters);
       while (g_variant_iter_loop (&iter, "{&sv}", &key, &variant))
         {
-          const gchar *supported_properties[] =
+          const struct
             {
-              "resumable",
-              "priority",
-              NULL,
+              const gchar *name;
+              const GVariantType *type;
+            }
+          supported_properties[] =
+            {
+              { "resumable", G_VARIANT_TYPE_BOOLEAN },
+              { "priority", G_VARIANT_TYPE_UINT32 },
             };
 
-          if (!g_strv_contains (supported_properties, key))
-            continue;
+          for (gsize i = 0; i < G_N_ELEMENTS (supported_properties); i++)
+            {
+              if (g_str_equal (supported_properties[i].name, key))
+                {
+                  if (!g_variant_is_of_type (variant, supported_properties[i].type))
+                    {
+                      g_set_error (error, MWS_SCHEDULER_ERROR,
+                                   MWS_SCHEDULER_ERROR_INVALID_PARAMETERS,
+                                   _("Invalid schedule entry parameters"));
+                      return NULL;
+                    }
 
-          GValue value = G_VALUE_INIT;
-          g_dbus_gvariant_to_gvalue (variant, &value);
+                  GValue value = G_VALUE_INIT;
+                  g_dbus_gvariant_to_gvalue (variant, &value);
 
-          g_ptr_array_add (names, (gpointer) key);
-          g_array_append_val (values, value);
+                  g_ptr_array_add (names, (gpointer) key);
+                  g_array_append_val (values, value);
+
+                  break;
+                }
+            }
         }
     }
 
