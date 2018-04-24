@@ -11,7 +11,7 @@ envs = test_env + [
 ]
 
 test_programs = [
-  ['schedule-service', [], deps],
+  ['service', [], deps],
 ]
 
 installed_tests_metadir = join_paths(datadir, 'installed-tests',
