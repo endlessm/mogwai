@@ -61,8 +61,8 @@ const gchar *mws_metered_to_string           (MwsMetered metered);
 /**
  * MwsConnectionDetails:
  * @metered: Whether the connection is metered.
- * @download_when_metered: %TRUE to download even if the connection is metered,
- *    %FALSE otherwise
+ * @allow_downloads_when_metered: %TRUE to download even if the connection is
+ *    metered, %FALSE otherwise
  * @tariff: (nullable) (owned): Tariff information for this connection.
  *
  * Information about the configuration and current state of a given connection.
@@ -73,7 +73,7 @@ const gchar *mws_metered_to_string           (MwsMetered metered);
 typedef struct
 {
   MwsMetered metered;
-  gboolean download_when_metered;
+  gboolean allow_downloads_when_metered;
   MwtTariff *tariff;
 } MwsConnectionDetails;
 

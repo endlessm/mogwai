@@ -992,15 +992,15 @@ mws_scheduler_reschedule (MwsScheduler *self)
           /* Is it safe to schedule this entry on this connection now? */
           gboolean is_safe = ((details->metered == MWS_METERED_NO ||
                                details->metered == MWS_METERED_GUESS_NO ||
-                               details->download_when_metered) &&
+                               details->allow_downloads_when_metered) &&
                               !tariff_period_reached_capacity_limit);
           g_debug ("%s: Connection ‘%s’ is %s to download entry ‘%s’ on "
-                   "(metered: %s, download-when-metered: %s, "
+                   "(metered: %s, allow-downloads-when-metered: %s, "
                    "tariff-period-reached-capacity-limit: %s).",
                    G_STRFUNC, all_connection_ids[i],
                    is_safe ? "safe" : "not safe", entry_id,
                    mws_metered_to_string (details->metered),
-                   details->download_when_metered ? "yes" : "no",
+                   details->allow_downloads_when_metered ? "yes" : "no",
                    tariff_period_reached_capacity_limit ? "yes" : "no");
 
           if (is_safe)
