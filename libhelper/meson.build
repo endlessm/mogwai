@@ -23,5 +23,3 @@ libhelper_dep = declare_dependency(
   link_with: libhelper,
   include_directories: root_inc,
 )
-
-subdir('tests')
