@@ -97,7 +97,7 @@ endforeach
 enable_installed_tests = get_option('installed_tests')
 test_template = files('template.test.in')
 test_env = [
-  'G_DEBUG=gc-friendly',
+  'G_DEBUG=gc-friendly,fatal-warnings',
   'MALLOC_CHECK_=2',
   'LC_ALL=C.UTF-8',
 ]
