@@ -22,7 +22,6 @@ set -e
 exec 2>&1
 
 exec gnome-desktop-testing-runner \
-	libmogwai-helper-1 \
 	libmogwai-schedule-1 \
 	libmogwai-schedule-client-0 \
 	libmogwai-tariff-0 \
