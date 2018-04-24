@@ -184,7 +184,7 @@ mws_scheduler_class_init (MwsSchedulerClass *klass)
       g_param_spec_uint ("max-entries", "Max. Entries",
                          "Maximum number of schedule entries present in the scheduler.",
                          0, G_MAXUINT, DEFAULT_MAX_ENTRIES,
-                         G_PARAM_READABLE | G_PARAM_STATIC_STRINGS);
+                         G_PARAM_READWRITE | G_PARAM_CONSTRUCT_ONLY | G_PARAM_STATIC_STRINGS);
 
   /**
    * MwsScheduler:connection-monitor:
