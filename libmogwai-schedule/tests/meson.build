@@ -11,6 +11,12 @@ envs = test_env + [
 ]
 
 test_programs = [
+  ['schedule-service', [
+    'connection-monitor-dummy.c',
+    'connection-monitor-dummy.h',
+    'peer-manager-dummy.c',
+    'peer-manager-dummy.h',
+  ], deps],
   ['service', [], deps],
 ]
 
