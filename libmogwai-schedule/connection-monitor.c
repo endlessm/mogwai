@@ -111,6 +111,7 @@ mws_connection_details_clear (MwsConnectionDetails *details)
 {
   details->metered = MWS_METERED_UNKNOWN;
   details->allow_downloads_when_metered = FALSE;
+  details->allow_downloads = TRUE;
   g_clear_object (&details->tariff);
 }
 

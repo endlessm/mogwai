@@ -616,8 +616,10 @@ mws_connection_monitor_nm_get_connection_details (MwsConnectionMonitor *monitor,
    * https://phabricator.endlessm.com/T20818#542708), we should plumb it in here
    * (but do the async loading of the file somewhere else, earlier). */
   const gboolean allow_downloads_when_metered_default = FALSE;
+  const gboolean allow_downloads_default = TRUE;
 
   gboolean allow_downloads_when_metered = allow_downloads_when_metered_default;
+  gboolean allow_downloads = allow_downloads_default;
   g_autoptr(MwtTariff) tariff = NULL;
 
   if (setting_user != NULL)
@@ -625,6 +627,9 @@ mws_connection_monitor_nm_get_connection_details (MwsConnectionMonitor *monitor,
       allow_downloads_when_metered = setting_user_get_boolean (setting_user,
                                                                "connection.allow-downloads-when-metered",
                                                                allow_downloads_when_metered_default);
+      allow_downloads = setting_user_get_boolean (setting_user,
+                                                  "connection.allow-downloads",
+                                                  allow_downloads_default);
 
       gboolean tariff_enabled = setting_user_get_boolean (setting_user,
                                                           "connection.tariff-enabled",
@@ -664,6 +669,7 @@ mws_connection_monitor_nm_get_connection_details (MwsConnectionMonitor *monitor,
   out_details->metered = mws_metered_combine_pessimistic (devices_metered,
                                                           connection_metered);
   out_details->allow_downloads_when_metered = allow_downloads_when_metered;
+  out_details->allow_downloads = allow_downloads;
   out_details->tariff = g_steal_pointer (&tariff);
 
   return TRUE;
