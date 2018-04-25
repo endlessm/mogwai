@@ -99,6 +99,23 @@ static gboolean             mws_connection_monitor_nm_get_connection_details (Mw
  * calculated as the pessimisic combination of the metered status of each
  * #NMDevice and #NMSettingConnection associated with that active connection.
  *
+ * Several settings from #NMSettingUser are read for each active connection:
+ *
+ *  * `connection.allow-downloads` (boolean): If `1`, big downloads are allowed
+ *    on this connection. If `0`, they are not, and Mogwai will never schedule
+ *    downloads on this connection. (Default: `1`.)
+ *  * `connection.allow-downloads-when-metered` (boolean): If `1`, big downloads
+ *    may be scheduled on this connection, iff it is not metered. If the
+ *    connection is metered, or if this setting is `0`, Mogwai will not schedule
+ *    downloads on this connection. (Default: `0`.)
+ *  * `connection.tariff-enabled` (boolean): If `1`, the tariff string in
+ *    `connection.tariff` is parsed and used (and must be present). If `0`, it
+ *    is not. (Default: `0`.)
+ *  * `connection.tariff` (string): A serialised tariff (see
+ *    mwt_tariff_builder_get_tariff_as_variant()) which specifies how the
+ *    connection’s properties change over time (for example, bandwidth limits
+ *    at certain times of day, or capacity limits). (Default: unset.)
+ *
  * Since: 0.1.0
  */
 struct _MwsConnectionMonitorNm
