@@ -655,6 +655,15 @@ mws_connection_monitor_nm_get_connection_details (MwsConnectionMonitor *monitor,
       tariff_variant_str = nm_setting_user_get_data (setting_user,
                                                      "connection.tariff");
 
+      g_debug ("%s: Connection ‘%s’ has:\n"
+               " • connection.allow-downloads-when-metered: %s\n"
+               " • connection.allow-downloads: %s\n"
+               " • connection.tariff-enabled: %s\n"
+               " • connection.tariff: %s",
+               G_STRFUNC, id, allow_downloads_when_metered ? "yes" : "no",
+               allow_downloads ? "yes" : "no", tariff_enabled ? "yes" : "no",
+               tariff_variant_str);
+
       if (tariff_enabled && tariff_variant_str != NULL)
         {
           g_autoptr(GError) local_error = NULL;
