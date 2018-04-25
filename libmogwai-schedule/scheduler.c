@@ -117,6 +117,9 @@ struct _MwsScheduler
 
   /* Maximum number of downloads allowed to be active at the same time. */
   guint max_active_entries;
+
+  /* Cache of some of the connection data used by our properties. */
+  gboolean cached_allow_downloads;
 };
 
 /* Arbitrarily chosen. */
@@ -139,6 +142,7 @@ typedef enum
   PROP_CONNECTION_MONITOR,
   PROP_MAX_ACTIVE_ENTRIES,
   PROP_PEER_MANAGER,
+  PROP_ALLOW_DOWNLOADS,
 } MwsSchedulerProperty;
 
 G_DEFINE_TYPE (MwsScheduler, mws_scheduler, G_TYPE_OBJECT)
@@ -147,7 +151,7 @@ static void
 mws_scheduler_class_init (MwsSchedulerClass *klass)
 {
   GObjectClass *object_class = (GObjectClass *) klass;
-  GParamSpec *props[PROP_PEER_MANAGER + 1] = { NULL, };
+  GParamSpec *props[PROP_ALLOW_DOWNLOADS + 1] = { NULL, };
 
   object_class->constructed = mws_scheduler_constructed;
   object_class->dispose = mws_scheduler_dispose;
@@ -235,6 +239,29 @@ mws_scheduler_class_init (MwsSchedulerClass *klass)
                            MWS_TYPE_PEER_MANAGER,
                            G_PARAM_READWRITE | G_PARAM_CONSTRUCT_ONLY | G_PARAM_STATIC_STRINGS);
 
+  /**
+   * MwsScheduler:allow-downloads:
+   *
+   * Whether any of the currently active network connections are configured to
+   * allow any large downloads. This is not a guarantee that a schedule entry
+   * will be scheduled; it is a reflection of the user’s intent for the use of
+   * the currently active network connections, intended to be used in UIs to
+   * remind the user of how they have configured the network.
+   *
+   * Programs must not use this value to check whether to schedule an entry.
+   * Schedule the entry unconditionally; the scheduler will work out whether
+   * (and when) to download the entry.
+   *
+   * Since: 0.1.0
+   */
+  props[PROP_ALLOW_DOWNLOADS] =
+      g_param_spec_boolean ("allow-downloads", "Allow Downloads",
+                            "Whether any of the currently active network "
+                            "connections are configured to allow any large "
+                            "downloads.",
+                            TRUE,
+                            G_PARAM_READABLE | G_PARAM_STATIC_STRINGS);
+
   g_object_class_install_properties (object_class, G_N_ELEMENTS (props), props);
 
   /**
@@ -314,6 +341,9 @@ mws_scheduler_constructed (GObject *object)
    * entries when a peer disappears. */
   g_signal_connect (self->peer_manager, "peer-vanished",
                     (GCallback) peer_manager_peer_vanished_cb, self);
+
+  /* Initialise self->cached_allow_downloads. */
+  mws_scheduler_reschedule (self);
 }
 
 static void
@@ -382,6 +412,9 @@ mws_scheduler_get_property (GObject    *object,
     case PROP_PEER_MANAGER:
       g_value_set_object (value, self->peer_manager);
       break;
+    case PROP_ALLOW_DOWNLOADS:
+      g_value_set_boolean (value, mws_scheduler_get_allow_downloads (self));
+      break;
     default:
       g_assert_not_reached ();
     }
@@ -398,6 +431,7 @@ mws_scheduler_set_property (GObject      *object,
   switch ((MwsSchedulerProperty) property_id)
     {
     case PROP_ENTRIES:
+    case PROP_ALLOW_DOWNLOADS:
       /* Read only. */
       g_assert_not_reached ();
       break;
@@ -432,6 +466,7 @@ connection_monitor_connections_changed_cb (MwsConnectionMonitor *connection_moni
 {
   MwsScheduler *self = MWS_SCHEDULER (user_data);
 
+  /* This needs to update self->cached_allow_downloads too. */
   g_debug ("%s: Connections changed (%u added, %u removed)",
            G_STRFUNC, (added != NULL) ? added->len : 0,
            (removed != NULL) ? removed->len : 0);
@@ -445,6 +480,7 @@ connection_monitor_connection_details_changed_cb (MwsConnectionMonitor *connecti
 {
   MwsScheduler *self = MWS_SCHEDULER (user_data);
 
+  /* This needs to update self->cached_allow_downloads too. */
   g_debug ("%s: Connection ‘%s’ changed details", G_STRFUNC, connection_id);
   mws_scheduler_reschedule (self);
 }
@@ -871,10 +907,6 @@ mws_scheduler_reschedule (MwsScheduler *self)
       self->reschedule_source = NULL;
     }
 
-  /* Fast path. */
-  if (g_hash_table_size (self->entries) == 0)
-    return;
-
   /* Preload information from the connection monitor. */
   const gchar * const *all_connection_ids = NULL;
   all_connection_ids = mws_connection_monitor_get_connection_ids (self->connection_monitor);
@@ -886,6 +918,8 @@ mws_scheduler_reschedule (MwsScheduler *self)
   g_array_set_clear_func (all_connection_details,
                           (GDestroyNotify) mws_connection_details_clear);
   g_array_set_size (all_connection_details, n_connections);
+
+  gboolean cached_allow_downloads = FALSE;
 
   for (gsize i = 0; all_connection_ids[i] != NULL; i++)
     {
@@ -902,7 +936,23 @@ mws_scheduler_reschedule (MwsScheduler *self)
           mws_connection_details_clear (out_details);
           continue;
         }
+
+      cached_allow_downloads = cached_allow_downloads || out_details->allow_downloads;
     }
+
+  if (self->cached_allow_downloads != cached_allow_downloads)
+    {
+      g_debug ("%s: Updating cached_allow_downloads from %u to %u",
+               G_STRFUNC, (guint) self->cached_allow_downloads,
+               (guint) cached_allow_downloads);
+      self->cached_allow_downloads = cached_allow_downloads;
+      g_object_notify (G_OBJECT (self), "allow-downloads");
+    }
+
+  /* Fast path. We still have to load the connection monitor information above,
+   * though, so that we can update self->cached_allow_downloads. */
+  if (g_hash_table_size (self->entries) == 0)
+    return;
 
   /* As we iterate over all the entries, see when the earliest time we next need
    * to reschedule is. */
@@ -1126,4 +1176,22 @@ mws_scheduler_reschedule (MwsScheduler *self)
     {
       g_debug ("%s: Setting next reschedule to never", G_STRFUNC);
     }
+}
+
+/**
+ * mws_scheduler_get_allow_downloads:
+ * @self: a #MwsScheduler
+ *
+ * Get the value of #MwsScheduler:allow-downloads.
+ *
+ * Returns: %TRUE if the user has indicated that at least one of the active
+ *    network connections should be used for large downloads, %FALSE otherwise
+ * Since: 0.1.0
+ */
+gboolean
+mws_scheduler_get_allow_downloads (MwsScheduler *self)
+{
+  g_return_val_if_fail (MWS_IS_SCHEDULER (self), TRUE);
+
+  return self->cached_allow_downloads;
 }

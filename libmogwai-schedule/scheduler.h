@@ -79,4 +79,6 @@ gboolean          mws_scheduler_is_entry_active (MwsScheduler      *self,
 
 void              mws_scheduler_reschedule      (MwsScheduler *self);
 
+gboolean          mws_scheduler_get_allow_downloads (MwsScheduler *self);
+
 G_END_DECLS
