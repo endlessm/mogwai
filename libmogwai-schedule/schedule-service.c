@@ -144,9 +144,11 @@ static const GDBusErrorEntry scheduler_error_map[] =
     { MWS_SCHEDULER_ERROR_FULL, "com.endlessm.DownloadManager1.Scheduler.Error.Full" },
     { MWS_SCHEDULER_ERROR_IDENTIFYING_PEER,
       "com.endlessm.DownloadManager1.Scheduler.Error.IdentifyingPeer" },
+    { MWS_SCHEDULER_ERROR_INVALID_PARAMETERS,
+      "org.freedesktop.DBus.Error.InvalidArgs" },
   };
 G_STATIC_ASSERT (G_N_ELEMENTS (scheduler_error_map) == MWS_SCHEDULER_N_ERRORS);
-G_STATIC_ASSERT (G_N_ELEMENTS (scheduler_error_map) == G_N_ELEMENTS (scheduler_errors));
+G_STATIC_ASSERT (G_N_ELEMENTS (scheduler_error_map) == G_N_ELEMENTS (scheduler_errors) + 1  /* o.fd.D.E.InvalidArgs */);
 
 /**
  * MwsScheduleService:
