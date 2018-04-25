@@ -135,6 +135,9 @@ static void active_entries_changed_cb (MwsScheduler    *scheduler,
                                        GPtrArray       *added,
                                        GPtrArray       *removed,
                                        gpointer         user_data);
+static void allow_downloads_changed_cb (GObject        *obj,
+                                        GParamSpec     *pspec,
+                                        gpointer        user_data);
 static void entry_notify_cb           (GObject         *obj,
                                        GParamSpec      *pspec,
                                        gpointer         user_data);
@@ -392,6 +395,8 @@ mws_schedule_service_set_property (GObject      *object,
                         (GCallback) entries_changed_cb, self);
       g_signal_connect (self->scheduler, "active-entries-changed",
                         (GCallback) active_entries_changed_cb, self);
+      g_signal_connect (self->scheduler, "notify::allow-downloads",
+                        (GCallback) allow_downloads_changed_cb, self);
 
       break;
     }
@@ -452,17 +457,29 @@ count_entries (MwsScheduleService *self,
 }
 
 static void
-notify_scheduler_properties (MwsScheduleService *self)
+notify_scheduler_properties (MwsScheduleService *self,
+                             gboolean            notify_entries,
+                             gboolean            notify_allow_downloads)
 {
   g_auto(GVariantDict) changed_properties_dict = G_VARIANT_DICT_INIT (NULL);
   guint32 entries, active_entries;
 
-  count_entries (self, &entries, &active_entries);
+  if (notify_entries)
+    {
+      count_entries (self, &entries, &active_entries);
 
-  g_variant_dict_insert (&changed_properties_dict,
-                         "ActiveEntryCount", "u", active_entries);
-  g_variant_dict_insert (&changed_properties_dict,
-                         "EntryCount", "u", entries);
+      g_variant_dict_insert (&changed_properties_dict,
+                             "ActiveEntryCount", "u", active_entries);
+      g_variant_dict_insert (&changed_properties_dict,
+                             "EntryCount", "u", entries);
+    }
+
+  if (notify_allow_downloads)
+    {
+      g_variant_dict_insert (&changed_properties_dict,
+                             "DownloadsAllowed", "b",
+                             mws_scheduler_get_allow_downloads (self->scheduler));
+    }
 
   g_autoptr(GVariant) parameters = NULL;
   parameters = g_variant_ref_sink (
@@ -536,7 +553,7 @@ entries_changed_cb (MwsScheduler *scheduler,
   if (((added == NULL) != (removed == NULL)) ||
       (added != NULL && removed != NULL && added->len != removed->len))
     {
-      notify_scheduler_properties (self);
+      notify_scheduler_properties (self, TRUE, FALSE);
     }
 
   /* This will potentially have changed. */
@@ -603,8 +620,19 @@ active_entries_changed_cb (MwsScheduler *scheduler,
   if (((added == NULL) != (removed == NULL)) ||
       (added != NULL && removed != NULL && added->len != removed->len))
     {
-      notify_scheduler_properties (self);
+      notify_scheduler_properties (self, TRUE, FALSE);
     }
+}
+
+static void
+allow_downloads_changed_cb (GObject    *obj,
+                            GParamSpec *pspec,
+                            gpointer    user_data)
+{
+  MwsScheduleService *self = MWS_SCHEDULE_SERVICE (user_data);
+
+  /* The com.endlessm.DownloadManager1.Scheduler property potentially changed */
+  notify_scheduler_properties (self, FALSE, TRUE);
 }
 
 static void
@@ -1199,6 +1227,8 @@ mws_schedule_service_scheduler_properties_get (MwsScheduleService    *self,
         value = g_variant_new_uint32 (active_entries);
       else if (g_str_equal (property_name, "EntryCount"))
         value = g_variant_new_uint32 (entries);
+      else if (g_str_equal (property_name, "DownloadsAllowed"))
+        value = g_variant_new_boolean (mws_scheduler_get_allow_downloads (self->scheduler));
     }
 
   if (value != NULL)

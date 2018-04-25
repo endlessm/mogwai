@@ -130,10 +130,20 @@ static const GDBusPropertyInfo scheduler_interface_active_entry_count =
   NULL,  /* annotations */
 };
 
+static const GDBusPropertyInfo scheduler_interface_downloads_allowed =
+{
+  -1, /* ref count */
+  "DownloadsAllowed",
+  "b",
+  G_DBUS_PROPERTY_INFO_FLAGS_READABLE,
+  NULL,  /* annotations */
+};
+
 static const GDBusPropertyInfo *scheduler_interface_properties[] =
 {
   &scheduler_interface_entry_count,
   &scheduler_interface_active_entry_count,
+  &scheduler_interface_downloads_allowed,
   NULL,
 };
 
