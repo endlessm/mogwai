@@ -93,4 +93,6 @@ GPtrArray         *mwsc_scheduler_schedule_entries_finish (MwscScheduler        
                                                            GAsyncResult         *result,
                                                            GError              **error);
 
+gboolean           mwsc_scheduler_get_allow_downloads (MwscScheduler *self);
+
 G_END_DECLS

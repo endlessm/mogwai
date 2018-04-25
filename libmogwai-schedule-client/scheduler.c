@@ -64,6 +64,10 @@ static gboolean mwsc_scheduler_init_finish   (GAsyncInitable       *initable,
 static void proxy_notify_name_owner_cb (GObject     *obj,
                                         GParamSpec  *pspec,
                                         gpointer     user_data);
+static void proxy_properties_changed_cb (GDBusProxy *proxy,
+                                         GVariant   *changed_properties,
+                                         GStrv       invalidated_properties,
+                                         gpointer    user_data);
 
 static const GDBusErrorEntry scheduler_error_map[] =
   {
@@ -110,6 +114,7 @@ typedef enum
   PROP_NAME,
   PROP_OBJECT_PATH,
   PROP_PROXY,
+  PROP_ALLOW_DOWNLOADS,
 } MwscSchedulerProperty;
 
 G_DEFINE_TYPE_WITH_CODE (MwscScheduler, mwsc_scheduler, G_TYPE_OBJECT,
@@ -122,7 +127,7 @@ static void
 mwsc_scheduler_class_init (MwscSchedulerClass *klass)
 {
   GObjectClass *object_class = (GObjectClass *) klass;
-  GParamSpec *props[PROP_PROXY + 1] = { NULL, };
+  GParamSpec *props[PROP_ALLOW_DOWNLOADS + 1] = { NULL, };
 
   object_class->constructed = mwsc_scheduler_constructed;
   object_class->dispose = mwsc_scheduler_dispose;
@@ -193,6 +198,30 @@ mwsc_scheduler_class_init (MwscSchedulerClass *klass)
                            G_TYPE_DBUS_PROXY,
                            G_PARAM_READWRITE | G_PARAM_CONSTRUCT_ONLY |
                            G_PARAM_STATIC_STRINGS);
+
+  /**
+   * MwscScheduler:allow-downloads:
+   *
+   * Whether any of the currently active network connections are configured to
+   * allow any large downloads. This is not a guarantee that a schedule entry
+   * will be scheduled; it is a reflection of the user’s intent for the use of
+   * the currently active network connections, intended to be used in UIs to
+   * remind the user of how they have configured the network.
+   *
+   * Programs must not use this value to check whether to schedule an entry.
+   * Schedule the entry unconditionally; the scheduler will work out whether
+   * (and when) to download the entry.
+   *
+   * Since: 0.1.0
+   */
+  props[PROP_ALLOW_DOWNLOADS] =
+      g_param_spec_boolean ("allow-downloads", "Allow Downloads",
+                            "Whether any of the currently active network "
+                            "connections are configured to allow any large "
+                            "downloads.",
+                            TRUE,
+                            G_PARAM_READABLE |
+                            G_PARAM_STATIC_STRINGS);
 
   g_object_class_install_properties (object_class, G_N_ELEMENTS (props), props);
 
@@ -275,6 +304,8 @@ mwsc_scheduler_dispose (GObject *object)
     {
       /* Disconnect from signals. */
       g_signal_handlers_disconnect_by_func (self->proxy,
+                                            proxy_properties_changed_cb, self);
+      g_signal_handlers_disconnect_by_func (self->proxy,
                                             proxy_notify_name_owner_cb, self);
     }
 
@@ -309,6 +340,9 @@ mwsc_scheduler_get_property (GObject    *object,
       break;
     case PROP_PROXY:
       g_value_set_object (value, self->proxy);
+      break;
+    case PROP_ALLOW_DOWNLOADS:
+      g_value_set_boolean (value, mwsc_scheduler_get_allow_downloads (self));
       break;
     default:
       g_assert_not_reached ();
@@ -348,6 +382,10 @@ mwsc_scheduler_set_property (GObject      *object,
       g_assert (self->proxy == NULL);
       self->proxy = g_value_dup_object (value);
       break;
+    case PROP_ALLOW_DOWNLOADS:
+      /* Read only. */
+      g_assert_not_reached ();
+      break;
     default:
       g_assert_not_reached ();
     }
@@ -362,6 +400,8 @@ scheduler_invalidate (MwscScheduler *self,
   g_assert (self->proxy != NULL);
 
   /* Disconnect from signals. */
+  g_signal_handlers_disconnect_by_func (self->proxy,
+                                        proxy_properties_changed_cb, self);
   g_signal_handlers_disconnect_by_func (self->proxy,
                                         proxy_notify_name_owner_cb, self);
 
@@ -382,9 +422,10 @@ check_invalidated (MwscScheduler *self,
   /* Invalidated? */
   if (self->proxy == NULL)
     {
-      g_task_return_new_error (task, MWSC_SCHEDULER_ERROR,
-                               MWSC_SCHEDULER_ERROR_INVALIDATED,
-                               _("Scheduler has been invalidated."));
+      if (task != NULL)
+        g_task_return_new_error (task, MWSC_SCHEDULER_ERROR,
+                                 MWSC_SCHEDULER_ERROR_INVALIDATED,
+                                 _("Scheduler has been invalidated."));
       return FALSE;
     }
 
@@ -409,6 +450,21 @@ proxy_notify_name_owner_cb (GObject    *obj,
     }
 }
 
+static void
+proxy_properties_changed_cb (GDBusProxy *proxy,
+                             GVariant   *changed_properties,
+                             GStrv       invalidated_properties,
+                             gpointer    user_data)
+{
+  MwscScheduler *self = MWSC_SCHEDULER (user_data);
+
+  g_debug ("Properties for proxy ‘%s’ have changed.", self->object_path);
+
+  gboolean downloads_allowed;
+  if (g_variant_lookup (changed_properties, "DownloadsAllowed", "b", &downloads_allowed))
+    g_object_notify (G_OBJECT (proxy), "allow-downloads");
+}
+
 static gboolean
 set_up_proxy (MwscScheduler  *self,
               GError        **error)
@@ -421,9 +477,15 @@ set_up_proxy (MwscScheduler  *self,
     g_dbus_proxy_set_interface_info (self->proxy,
                                      (GDBusInterfaceInfo *) &scheduler_interface);
 
+  /* We require property caching to be enabled too. */
+  g_return_val_if_fail (!(g_dbus_proxy_get_flags (self->proxy) &
+                          G_DBUS_PROXY_FLAGS_DO_NOT_LOAD_PROPERTIES), FALSE);
+
   /* Subscribe to signals. */
   g_signal_connect (self->proxy, "notify::g-name-owner",
                     (GCallback) proxy_notify_name_owner_cb, self);
+  g_signal_connect (self->proxy, "g-properties-changed",
+                    (GCallback) proxy_properties_changed_cb, self);
 
   /* Validate that the scheduler actually exists. */
   g_autoptr(GError) local_error = NULL;
@@ -1024,4 +1086,35 @@ mwsc_scheduler_schedule_entries_finish (MwscScheduler  *self,
   g_return_val_if_fail (error == NULL || *error == NULL, NULL);
 
   return g_task_propagate_pointer (G_TASK (result), error);
+}
+
+/**
+ * mwsc_scheduler_get_allow_downloads:
+ * @self: a #MwscScheduler
+ *
+ * Get the value of #MwscScheduler:allow-downloads.
+ *
+ * Returns: %TRUE if the user has indicated that at least one of the active
+ *    network connections should be used for large downloads, %FALSE otherwise
+ * Since: 0.1.0
+ */
+gboolean
+mwsc_scheduler_get_allow_downloads (MwscScheduler *self)
+{
+  g_return_val_if_fail (MWSC_IS_SCHEDULER (self), TRUE);
+
+  if (!check_invalidated (self, NULL))
+    return TRUE;
+
+  g_autoptr(GVariant) allow_downloads_variant = NULL;
+  allow_downloads_variant = g_dbus_proxy_get_cached_property (self->proxy, "DownloadsAllowed");
+
+  if (allow_downloads_variant == NULL)
+    {
+      /* The property cache is always expected to be populated. */
+      g_critical ("%s: Could not get cached DownloadsAllowed property", G_STRFUNC);
+      return TRUE;
+    }
+
+  return g_variant_get_boolean (allow_downloads_variant);
 }
