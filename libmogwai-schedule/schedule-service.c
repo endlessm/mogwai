@@ -1277,13 +1277,31 @@ mws_schedule_service_scheduler_properties_get_all (MwsScheduleService    *self,
 
   /* Try the interface. */
   if (g_str_equal (interface_name, "com.endlessm.DownloadManager1.Scheduler"))
-    g_dbus_method_invocation_return_value (invocation,
-                                           g_variant_new_parsed ("(@a{sv} {},)"));
+    {
+      g_auto(GVariantDict) changed_properties_dict = G_VARIANT_DICT_INIT (NULL);
+      guint32 entries, active_entries;
+
+      count_entries (self, &entries, &active_entries);
+
+      g_variant_dict_insert (&changed_properties_dict,
+                             "ActiveEntryCount", "u", active_entries);
+      g_variant_dict_insert (&changed_properties_dict,
+                             "EntryCount", "u", entries);
+      g_variant_dict_insert (&changed_properties_dict,
+                             "DownloadsAllowed", "b",
+                             mws_scheduler_get_allow_downloads (self->scheduler));
+
+      g_dbus_method_invocation_return_value (invocation,
+                                             g_variant_new ("(@a{sv})",
+                                                            g_variant_dict_end (&changed_properties_dict)));
+    }
   else
-    g_dbus_method_invocation_return_error (invocation, G_DBUS_ERROR,
-                                           G_DBUS_ERROR_UNKNOWN_INTERFACE,
-                                           _("Unknown interface ‘%s’."),
-                                           interface_name);
+    {
+      g_dbus_method_invocation_return_error (invocation, G_DBUS_ERROR,
+                                             G_DBUS_ERROR_UNKNOWN_INTERFACE,
+                                             _("Unknown interface ‘%s’."),
+                                             interface_name);
+    }
 }
 
 typedef struct
