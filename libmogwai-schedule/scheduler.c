@@ -243,7 +243,10 @@ mws_scheduler_class_init (MwsSchedulerClass *klass)
    * MwsScheduler:allow-downloads:
    *
    * Whether any of the currently active network connections are configured to
-   * allow any large downloads. This is not a guarantee that a schedule entry
+   * allow any large downloads. It is up to the clients which use Mogwai to
+   * decide what ’large’ is.
+   *
+   * This is not a guarantee that a schedule entry
    * will be scheduled; it is a reflection of the user’s intent for the use of
    * the currently active network connections, intended to be used in UIs to
    * remind the user of how they have configured the network.
