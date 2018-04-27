@@ -17,7 +17,9 @@ mogwai\-scheduled — Download Scheduling Daemon
 \fBmogwai\-scheduled\fP is a scheduler for large downloads. It receives requests
 for starting downloads from various client programs, schedules them according
 to current bandwidth and cost limitations, and notifies the client programs when
-to download (and how much to download).
+to download (and how much to download). It is up to each client program to
+decide what a ‘large’ download is, and whether it would benefit from scheduling
+with \fBmogwai\-scheduled\fP.
 .PP
 \fBmogwai\-scheduled\fP is designed to be run by \fBsystemd\fP(1), being
 D\-Bus activated. There should be no need to run \fBmogwai\-scheduled\fP
