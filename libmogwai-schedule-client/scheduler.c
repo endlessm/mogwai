@@ -1114,7 +1114,8 @@ mwsc_scheduler_get_allow_downloads (MwscScheduler *self)
 
   if (allow_downloads_variant == NULL)
     {
-      g_debug ("%s: Could not get cached DownloadsAllowed property", G_STRFUNC);
+      /* The property cache is always expected to be populated. */
+      g_critical ("%s: Could not get cached DownloadsAllowed property", G_STRFUNC);
       return TRUE;
     }
 
