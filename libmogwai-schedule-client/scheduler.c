@@ -76,10 +76,11 @@ G_STATIC_ASSERT (G_N_ELEMENTS (scheduler_error_map) == G_N_ELEMENTS (scheduler_e
 /**
  * MwscScheduler:
  *
- * A proxy for the scheduler in the D-Bus service. Currently, the only method
- * available on #MwscScheduler is mwsc_scheduler_schedule_async(), which should
- * be used to create new #MwscScheduleEntrys. See the documentation for that
- * class for information.
+ * A proxy for the scheduler in the D-Bus service. Currently, the only methods
+ * available on #MwscScheduler are mwsc_scheduler_schedule_async() and
+ * mws_scheduler_schedule_entries_async(), which should
+ * be used to create new #MwscScheduleEntrys. See the documentation for those
+ * methods for information.
  *
  * If the service goes away, #MwscScheduler::invalidated will be emitted, and
  * all future method calls on the object will return a
@@ -728,9 +729,6 @@ mwsc_scheduler_new_full_finish (GAsyncResult  *result,
 static void schedule_cb (GObject      *obj,
                          GAsyncResult *result,
                          gpointer      user_data);
-static void proxy_cb    (GObject      *obj,
-                         GAsyncResult *result,
-                         gpointer      user_data);
 
 /**
  * mwsc_scheduler_schedule_async:
@@ -775,14 +773,26 @@ mwsc_scheduler_schedule_async (MwscScheduler       *self,
   if (!check_invalidated (self, task))
     return;
 
-  g_dbus_proxy_call (self->proxy,
-                     "Schedule",
-                     g_variant_new ("(@a{sv})", parameters),
-                     G_DBUS_CALL_FLAGS_NONE,
-                     -1,  /* default timeout */
-                     cancellable,
-                     schedule_cb,
-                     g_steal_pointer (&task));
+  g_autoptr(GPtrArray) parameters_array = g_ptr_array_new_with_free_func (NULL);
+  g_ptr_array_add (parameters_array, parameters);
+  mwsc_scheduler_schedule_entries_async (self, parameters_array, cancellable,
+                                         schedule_cb, g_steal_pointer (&task));
+}
+
+/* Steal the given element from the array. This assumes the array’s free
+ * function is g_object_unref().
+ *
+ * FIXME: Use g_ptr_array_steal_index_fast() when we have a version of GLib
+ * supporting it. See: https://bugzilla.gnome.org/show_bug.cgi?id=795376. */
+static gpointer
+ptr_array_steal_index_fast (GPtrArray *array,
+                            guint      index_)
+{
+  g_ptr_array_set_free_func (array, NULL);
+  g_autoptr(GObject) obj = g_ptr_array_remove_index_fast (array, index_);
+  g_ptr_array_set_free_func (array, (GDestroyNotify) g_object_unref);
+
+  return g_steal_pointer (&obj);
 }
 
 static void
@@ -790,47 +800,21 @@ schedule_cb (GObject      *obj,
              GAsyncResult *result,
              gpointer      user_data)
 {
-  GDBusProxy *proxy = G_DBUS_PROXY (obj);
+  MwscScheduler *self = MWSC_SCHEDULER (obj);
   g_autoptr(GTask) task = G_TASK (user_data);
-  MwscScheduler *self = g_task_get_source_object (task);
-  GCancellable *cancellable = g_task_get_cancellable (task);
-  g_autoptr(GError) error = NULL;
+  g_autoptr(GError) local_error = NULL;
+  g_autoptr(GPtrArray) entries = NULL;
 
-  /* Grab the schedule entry. */
-  g_autoptr(GVariant) return_value = NULL;
-  return_value = g_dbus_proxy_call_finish (proxy, result, &error);
+  entries = mwsc_scheduler_schedule_entries_finish (self, result, &local_error);
 
-  if (error != NULL)
+  if (local_error != NULL)
     {
-      g_task_return_error (task, g_steal_pointer (&error));
+      g_task_return_error (task, g_steal_pointer (&local_error));
       return;
     }
 
-  const gchar *schedule_entry_path;
-  g_variant_get (return_value, "(&o)", &schedule_entry_path);
-
-  mwsc_schedule_entry_new_full_async (g_dbus_proxy_get_connection (self->proxy),
-                                      g_dbus_proxy_get_name (self->proxy),
-                                      schedule_entry_path,
-                                      cancellable,
-                                      proxy_cb,
-                                      g_steal_pointer (&task));
-}
-
-static void
-proxy_cb (GObject      *obj,
-          GAsyncResult *result,
-          gpointer      user_data)
-{
-  g_autoptr(GTask) task = G_TASK (user_data);
-  g_autoptr(GError) error = NULL;
-
-  g_autoptr(MwscScheduleEntry) entry = mwsc_schedule_entry_new_full_finish (result, &error);
-
-  if (entry != NULL)
-    g_task_return_pointer (task, g_steal_pointer (&entry), g_object_unref);
-  else
-    g_task_return_error (task, g_steal_pointer (&error));
+  g_assert (entries->len == 1);
+  g_task_return_pointer (task, ptr_array_steal_index_fast (entries, 0), g_object_unref);
 }
 
 /**
@@ -852,6 +836,191 @@ mwsc_scheduler_schedule_finish (MwscScheduler  *self,
   g_return_val_if_fail (MWSC_IS_SCHEDULER (self), NULL);
   g_return_val_if_fail (g_task_is_valid (result, self), NULL);
   g_return_val_if_fail (g_async_result_is_tagged (result, mwsc_scheduler_schedule_async), NULL);
+  g_return_val_if_fail (error == NULL || *error == NULL, NULL);
+
+  return g_task_propagate_pointer (G_TASK (result), error);
+}
+
+typedef struct
+{
+  gsize n_entries;
+  GPtrArray *entries;  /* (element-type MwscScheduleEntry) (owned) */
+} ScheduleEntriesData;
+
+static void
+schedule_entries_data_free (ScheduleEntriesData *data)
+{
+  g_clear_pointer (&data->entries, g_ptr_array_unref);
+  g_free (data);
+}
+
+G_DEFINE_AUTOPTR_CLEANUP_FUNC (ScheduleEntriesData, schedule_entries_data_free)
+
+static void schedule_entries_cb (GObject      *obj,
+                                 GAsyncResult *result,
+                                 gpointer      user_data);
+static void proxy_entries_cb    (GObject      *obj,
+                                 GAsyncResult *result,
+                                 gpointer      user_data);
+
+/**
+ * mwsc_scheduler_schedule_entries_async:
+ * @self: a #MwscScheduler
+ * @parameters: non-empty array of #GVariants of type `a{sv}` giving initial
+ *    parameters for each of the schedule entries
+ * @cancellable: (nullable): a #GCancellable, or %NULL
+ * @callback: callback to invoke on completion
+ * @user_data: user data to pass to @callback
+ *
+ * Create one or more new #MwscScheduleEntrys in the scheduler and return them.
+ * The entries will be created with the given initial @parameters (which may be
+ * %NULL to use the defaults). As soon as the entries are created, the scheduler
+ * may schedule them, which it will do by setting
+ * #MwscScheduleEntry:download-now to %TRUE on one or more of them.
+ *
+ * If any of the #GVariants in @parameters are floating, they are consumed.
+ *
+ * The following @parameters are currently supported:
+ *
+ *  * `resumable` (`b`): sets #MwscScheduleEntry:resumable
+ *  * `priority` (`u`): sets #MwscScheduleEntry:priority
+ *
+ * Since: 0.1.0
+ */
+void
+mwsc_scheduler_schedule_entries_async (MwscScheduler       *self,
+                                       GPtrArray           *parameters,
+                                       GCancellable        *cancellable,
+                                       GAsyncReadyCallback  callback,
+                                       gpointer             user_data)
+{
+  g_return_if_fail (MWSC_IS_SCHEDULER (self));
+  g_return_if_fail (parameters != NULL && parameters->len > 0);
+  g_return_if_fail (cancellable == NULL || G_IS_CANCELLABLE (cancellable));
+
+  g_autoptr(GTask) task = g_task_new (self, cancellable, callback, user_data);
+  g_task_set_source_tag (task, mwsc_scheduler_schedule_entries_async);
+
+  if (!check_invalidated (self, task))
+    return;
+
+  g_auto(GVariantBuilder) builder = G_VARIANT_BUILDER_INIT (G_VARIANT_TYPE ("(aa{sv})"));
+  g_variant_builder_open (&builder, G_VARIANT_TYPE ("aa{sv}"));
+
+  for (gsize i = 0; i < parameters->len; i++)
+    {
+      GVariant *variant = g_ptr_array_index (parameters, i);
+
+      if (variant == NULL)
+        variant = g_variant_new ("a{sv}", NULL);
+
+      g_return_if_fail (g_variant_is_normal_form (variant) &&
+                        g_variant_is_of_type (variant, G_VARIANT_TYPE_VARDICT));
+
+      g_variant_builder_add_value (&builder, variant);
+    }
+
+  g_variant_builder_close (&builder);
+
+  g_dbus_proxy_call (self->proxy,
+                     "ScheduleEntries",
+                     g_variant_builder_end (&builder),
+                     G_DBUS_CALL_FLAGS_NONE,
+                     -1,  /* default timeout */
+                     cancellable,
+                     schedule_entries_cb,
+                     g_steal_pointer (&task));
+}
+
+static void
+schedule_entries_cb (GObject      *obj,
+                     GAsyncResult *result,
+                     gpointer      user_data)
+{
+  GDBusProxy *proxy = G_DBUS_PROXY (obj);
+  g_autoptr(GTask) task = G_TASK (user_data);
+  MwscScheduler *self = g_task_get_source_object (task);
+  GCancellable *cancellable = g_task_get_cancellable (task);
+  g_autoptr(GError) error = NULL;
+
+  /* Grab the schedule entries. */
+  g_autoptr(GVariant) return_value = NULL;
+  return_value = g_dbus_proxy_call_finish (proxy, result, &error);
+
+  if (error != NULL)
+    {
+      g_task_return_error (task, g_steal_pointer (&error));
+      return;
+    }
+
+  /* Start constructing the entries in parallel. */
+  g_autoptr(GVariantIter) iter = NULL;
+  const gchar *schedule_entry_path;
+  g_variant_get (return_value, "(ao)", &iter);
+
+  /* Set up the return closure. */
+  g_autoptr(ScheduleEntriesData) data = g_new0 (ScheduleEntriesData, 1);
+  data->n_entries = g_variant_iter_n_children (iter);
+  data->entries = g_ptr_array_new_with_free_func (g_object_unref);
+  g_task_set_task_data (task, g_steal_pointer (&data),
+                        (GDestroyNotify) schedule_entries_data_free);
+
+  while (g_variant_iter_loop (iter, "&o", &schedule_entry_path))
+    {
+      mwsc_schedule_entry_new_full_async (g_dbus_proxy_get_connection (self->proxy),
+                                          g_dbus_proxy_get_name (self->proxy),
+                                          schedule_entry_path,
+                                          cancellable,
+                                          proxy_entries_cb,
+                                          g_steal_pointer (&task));
+    }
+}
+
+static void
+proxy_entries_cb (GObject      *obj,
+                  GAsyncResult *result,
+                  gpointer      user_data)
+{
+  g_autoptr(GTask) task = G_TASK (user_data);
+  g_autoptr(GError) local_error = NULL;
+  ScheduleEntriesData *data = g_task_get_task_data (task);
+
+  g_autoptr(MwscScheduleEntry) entry = mwsc_schedule_entry_new_full_finish (result, &local_error);
+
+  if (entry == NULL)
+    {
+      g_task_return_error (task, g_steal_pointer (&local_error));
+      return;
+    }
+
+  g_ptr_array_add (data->entries, g_steal_pointer (&entry));
+
+  if (data->entries->len == data->n_entries && !g_task_had_error (task))
+    g_task_return_pointer (task, g_steal_pointer (&data->entries),
+                           (GDestroyNotify) g_ptr_array_unref);
+}
+
+/**
+ * mwsc_scheduler_schedule_entries_finish:
+ * @self: a #MwscScheduleEntry
+ * @result: asynchronous operation result
+ * @error: return location for a #GError
+ *
+ * Finish adding one or more #MwscScheduleEntrys. See
+ * mwsc_scheduler_schedule_entries_async().
+ *
+ * Returns: (transfer full) (element-type MwscScheduleEntry): an non-empty array
+ *    of the new #MwscScheduleEntrys
+ * Since: 0.1.0
+ */
+GPtrArray *
+mwsc_scheduler_schedule_entries_finish (MwscScheduler  *self,
+                                        GAsyncResult   *result,
+                                        GError        **error)
+{
+  g_return_val_if_fail (MWSC_IS_SCHEDULER (self), NULL);
+  g_return_val_if_fail (g_task_is_valid (result, self), NULL);
+  g_return_val_if_fail (g_async_result_is_tagged (result, mwsc_scheduler_schedule_entries_async), NULL);
   g_return_val_if_fail (error == NULL || *error == NULL, NULL);
 
   return g_task_propagate_pointer (G_TASK (result), error);

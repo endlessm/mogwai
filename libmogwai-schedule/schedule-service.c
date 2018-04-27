@@ -121,7 +121,7 @@ static void mws_schedule_service_scheduler_properties_get_all (MwsScheduleServic
                                                                const gchar           *sender,
                                                                GVariant              *parameters,
                                                                GDBusMethodInvocation *invocation);
-static void mws_schedule_service_scheduler_schedule           (MwsScheduleService    *self,
+static void mws_schedule_service_scheduler_schedule_entries   (MwsScheduleService    *self,
                                                                GDBusConnection       *connection,
                                                                const gchar           *sender,
                                                                GVariant              *parameters,
@@ -1124,7 +1124,9 @@ scheduler_methods[] =
 
     /* Scheduler methods. */
     { "com.endlessm.DownloadManager1.Scheduler", "Schedule",
-      mws_schedule_service_scheduler_schedule },
+      mws_schedule_service_scheduler_schedule_entries },
+    { "com.endlessm.DownloadManager1.Scheduler", "ScheduleEntries",
+      mws_schedule_service_scheduler_schedule_entries },
   };
 
 G_STATIC_ASSERT (G_N_ELEMENTS (scheduler_methods) ==
@@ -1256,18 +1258,18 @@ typedef struct
 {
   MwsScheduleService *schedule_service;  /* (unowned) */
   GDBusMethodInvocation *invocation;  /* (owned) */
-  MwsScheduleEntry *entry;  /* (owned) */
+  GPtrArray *entries;  /* (element-type MwsScheduleEntry) (owned) */
 } ScheduleData;
 
 static ScheduleData *
 schedule_data_new (MwsScheduleService    *schedule_service,
                    GDBusMethodInvocation *invocation,
-                   MwsScheduleEntry      *entry)
+                   GPtrArray             *entries)
 {
   ScheduleData *data = g_new0 (ScheduleData, 1);
   data->schedule_service = schedule_service;
   data->invocation = g_object_ref (invocation);
-  data->entry = g_object_ref (entry);
+  data->entries = g_ptr_array_ref (entries);
   return data;
 }
 
@@ -1275,7 +1277,7 @@ static void
 schedule_data_free (ScheduleData *data)
 {
   g_clear_object (&data->invocation);
-  g_clear_object (&data->entry);
+  g_clear_pointer (&data->entries, g_ptr_array_unref);
   g_free (data);
 }
 
@@ -1286,28 +1288,59 @@ static void schedule_cb (GObject      *obj,
                          gpointer      user_data);
 
 static void
-mws_schedule_service_scheduler_schedule (MwsScheduleService    *self,
-                                         GDBusConnection       *connection,
-                                         const gchar           *sender,
-                                         GVariant              *parameters,
-                                         GDBusMethodInvocation *invocation)
+mws_schedule_service_scheduler_schedule_entries (MwsScheduleService    *self,
+                                                 GDBusConnection       *connection,
+                                                 const gchar           *sender,
+                                                 GVariant              *parameters,
+                                                 GDBusMethodInvocation *invocation)
 {
   g_autoptr(GError) local_error = NULL;
 
-  /* Create a schedule entry, validating the parameters at the time. */
-  g_autoptr(GVariant) properties_variant = NULL;
-  g_variant_get (parameters, "(@a{sv})", &properties_variant);
+  /* This method implements both .Schedule and .ScheduleEntries, switching on
+   * the invoked method name to work out whether to handle one or several
+   * entries. */
+  g_autoptr(GPtrArray) entries = g_ptr_array_new_with_free_func (g_object_unref);
 
-  g_autoptr(MwsScheduleEntry) entry = NULL;
-  entry = mws_schedule_entry_new_from_variant (sender, properties_variant, &local_error);
-
-  if (entry == NULL)
+  /* Create one or more schedule entries, validating the parameters at the time. */
+  if (g_str_equal (g_dbus_method_invocation_get_method_name (invocation), "Schedule"))
     {
-      g_dbus_method_invocation_return_error (invocation, G_DBUS_ERROR,
-                                             G_DBUS_ERROR_INVALID_ARGS,
-                                             _("Invalid schedule entry parameters: %s"),
-                                             local_error->message);
-      return;
+      g_autoptr(GVariant) properties_variant = NULL;
+      g_variant_get (parameters, "(@a{sv})", &properties_variant);
+
+      g_ptr_array_add (entries, mws_schedule_entry_new_from_variant (sender, properties_variant, &local_error));
+
+      if (local_error != NULL)
+        {
+          g_dbus_method_invocation_return_error (invocation, G_DBUS_ERROR,
+                                                 G_DBUS_ERROR_INVALID_ARGS,
+                                                 _("Invalid schedule entry parameters: %s"),
+                                                 local_error->message);
+          return;
+        }
+    }
+  else if (g_str_equal (g_dbus_method_invocation_get_method_name (invocation), "ScheduleEntries"))
+    {
+      g_autoptr(GVariantIter) properties_array_iter = NULL;
+      g_variant_get (parameters, "(aa{sv})", &properties_array_iter);
+
+      g_autoptr(GVariant) properties_variant = NULL;
+      while (g_variant_iter_loop (properties_array_iter, "@a{sv}", &properties_variant))
+        {
+          g_ptr_array_add (entries, mws_schedule_entry_new_from_variant (sender, properties_variant, &local_error));
+
+          if (local_error != NULL)
+            {
+              g_dbus_method_invocation_return_error (invocation, G_DBUS_ERROR,
+                                                     G_DBUS_ERROR_INVALID_ARGS,
+                                                     _("Invalid schedule entry parameters: %s"),
+                                                     local_error->message);
+              return;
+            }
+        }
+    }
+  else
+    {
+      g_assert_not_reached ();
     }
 
   /* Load the peer’s credentials and watch to see if it disappears in future (to
@@ -1316,7 +1349,7 @@ mws_schedule_service_scheduler_schedule (MwsScheduleService    *self,
   mws_peer_manager_ensure_peer_credentials_async (mws_scheduler_get_peer_manager (self->scheduler),
                                                   sender, self->cancellable,
                                                   schedule_cb,
-                                                  schedule_data_new (self, invocation, entry));
+                                                  schedule_data_new (self, invocation, entries));
 }
 
 static void
@@ -1328,11 +1361,11 @@ schedule_cb (GObject      *obj,
   g_autoptr(ScheduleData) data = user_data;
   MwsScheduleService *self = data->schedule_service;
   GDBusMethodInvocation *invocation = data->invocation;
-  MwsScheduleEntry *entry = data->entry;
+  GPtrArray *entries = data->entries;  /* (element-type MwsScheduleEntry) */
   g_autoptr(GError) local_error = NULL;
 
   /* Finish looking up the sender. */
-  const gchar *sender_path = NULL;
+  g_autofree gchar *sender_path = NULL;
   sender_path = mws_peer_manager_ensure_peer_credentials_finish (peer_manager,
                                                                  result, &local_error);
 
@@ -1343,11 +1376,8 @@ schedule_cb (GObject      *obj,
       return;
     }
 
-  /* Add it to the scheduler. */
-  g_autoptr(GPtrArray) added = g_ptr_array_new_with_free_func (NULL);
-  g_ptr_array_add (added, entry);
-
-  if (!mws_scheduler_update_entries (self->scheduler, added, NULL, &local_error))
+  /* Add the entries to the scheduler. */
+  if (!mws_scheduler_update_entries (self->scheduler, entries, NULL, &local_error))
     {
       /* We know this error domain is registered with #GDBusError. */
       g_warn_if_fail (local_error->domain == MWS_SCHEDULER_ERROR);
@@ -1356,10 +1386,34 @@ schedule_cb (GObject      *obj,
       return;
     }
 
-  /* Build a path for the entry and return it. */
-  g_autofree gchar *entry_path = schedule_entry_to_object_path (self, entry);
-  g_dbus_method_invocation_return_value (invocation,
-                                         g_variant_new ("(o)", entry_path));
+  /* Build paths for the entries and return them. */
+  if (g_str_equal (g_dbus_method_invocation_get_method_name (invocation), "Schedule"))
+    {
+      g_assert (entries->len == 1);
+      MwsScheduleEntry *entry = g_ptr_array_index (entries, 0);
+      g_autofree gchar *entry_path = schedule_entry_to_object_path (self, entry);
+      g_dbus_method_invocation_return_value (invocation,
+                                             g_variant_new ("(o)", entry_path));
+    }
+  else if (g_str_equal (g_dbus_method_invocation_get_method_name (invocation), "ScheduleEntries"))
+    {
+      g_auto(GVariantBuilder) builder = G_VARIANT_BUILDER_INIT (G_VARIANT_TYPE ("(ao)"));
+      g_variant_builder_open (&builder, G_VARIANT_TYPE ("ao"));
+      for (gsize i = 0; i < entries->len; i++)
+        {
+          MwsScheduleEntry *entry = g_ptr_array_index (entries, i);
+          g_autofree gchar *entry_path = schedule_entry_to_object_path (self, entry);
+          g_variant_builder_add (&builder, "o", entry_path);
+        }
+      g_variant_builder_close (&builder);
+
+      g_dbus_method_invocation_return_value (invocation,
+                                             g_variant_builder_end (&builder));
+    }
+  else
+    {
+      g_assert_not_reached ();
+    }
 }
 
 /**
