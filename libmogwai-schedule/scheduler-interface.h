@@ -105,10 +105,43 @@ static const GDBusMethodInfo scheduler_interface_schedule_entries =
   NULL,  /* annotations */
 };
 
+static const GDBusArgInfo scheduler_interface_hold_arg_reason =
+{
+  -1,  /* ref count */
+  (gchar *) "reason",
+  (gchar *) "s",
+  NULL
+};
+
+static const GDBusArgInfo *scheduler_interface_hold_in_args[] =
+{
+  &scheduler_interface_hold_arg_reason,
+  NULL,
+};
+static const GDBusMethodInfo scheduler_interface_hold =
+{
+  -1,  /* ref count */
+  (gchar *) "Hold",
+  (GDBusArgInfo **) scheduler_interface_hold_in_args,
+  NULL,  /* out args */
+  NULL,  /* annotations */
+};
+
+static const GDBusMethodInfo scheduler_interface_release =
+{
+  -1,  /* ref count */
+  (gchar *) "Release",
+  NULL,  /* in args */
+  NULL,  /* out args */
+  NULL,  /* annotations */
+};
+
 static const GDBusMethodInfo *scheduler_interface_methods[] =
 {
   &scheduler_interface_schedule,
   &scheduler_interface_schedule_entries,
+  &scheduler_interface_hold,
+  &scheduler_interface_release,
   NULL,
 };
 
