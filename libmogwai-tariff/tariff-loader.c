@@ -175,10 +175,10 @@ mwt_tariff_loader_load_from_bytes (MwtTariffLoader  *self,
   return mwt_tariff_loader_load_from_variant (self, variant, error);
 }
 
-/* Construct a #GDateTime from the given @unix_timestamp (always in UTC) and
- * @timezone_identifier (for example, ‘Europe/London’; note that this is *not*
- * a timezone abbreviation like ‘AST’). This will return %NULL if an invalid
- * time results. */
+/* Construct a #GDateTime from the given @unix_timestamp (always in the timezone
+ * represented by @timezone_identifier) and the @timezone_identifier itself (for
+ * example, ‘Europe/London’; note that this is *not* a timezone abbreviation like
+ * ‘AST’). This will return %NULL if an invalid time results. */
 static GDateTime *
 date_time_new_from_unix (guint64      unix_timestamp,
                          const gchar *timezone_identifier)
@@ -203,7 +203,13 @@ date_time_new_from_unix (guint64      unix_timestamp,
   if (!g_str_equal (g_time_zone_get_identifier (tz), timezone_identifier))
     return NULL;
 
-  return g_date_time_to_timezone (utc, tz);
+  return g_date_time_new (tz,
+                          g_date_time_get_year (utc),
+                          g_date_time_get_month (utc),
+                          g_date_time_get_day_of_month (utc),
+                          g_date_time_get_hour (utc),
+                          g_date_time_get_minute (utc),
+                          g_date_time_get_second (utc));
 }
 
 /**
