@@ -106,6 +106,8 @@ struct _MwscScheduler
   GError *init_error;  /* nullable; owned */
   gboolean init_success;
   gboolean initialising;
+
+  guint hold_count;
 };
 
 typedef enum
@@ -317,6 +319,9 @@ mwsc_scheduler_dispose (GObject *object)
   g_clear_pointer (&self->name, g_free);
   g_clear_pointer (&self->object_path, g_free);
   g_clear_error (&self->init_error);
+
+  if (self->hold_count > 0)
+    g_debug ("Disposing of MwscScheduler with hold count of %u", self->hold_count);
 
   /* Chain up to the parent class */
   G_OBJECT_CLASS (mwsc_scheduler_parent_class)->dispose (object);
@@ -1089,6 +1094,233 @@ mwsc_scheduler_schedule_entries_finish (MwscScheduler  *self,
   g_return_val_if_fail (error == NULL || *error == NULL, NULL);
 
   return g_task_propagate_pointer (G_TASK (result), error);
+}
+
+static void hold_cb (GObject      *obj,
+                     GAsyncResult *result,
+                     gpointer      user_data);
+
+/**
+ * mwsc_scheduler_hold_async:
+ * @self: a #MwscScheduler
+ * @reason: (nullable): reason for holding the daemon, or %NULL to provide none
+ * @cancellable: (nullable): a #GCancellable, or %NULL
+ * @callback: callback to invoke on completion
+ * @user_data: user data to pass to @callback
+ *
+ * Increment the hold count on the scheduler daemon. While the daemon is held,
+ * it will not exit due to inactivity. The daemon is automatically held while a
+ * schedule entry is registered with it.
+ *
+ * This function is typically used to hold the daemon while subscribed to
+ * signals from it.
+ *
+ * Calls to this function must be paired with calls to
+ * mwsc_scheduler_release_async() to eventually release the hold. You may call
+ * this function many times, and must call mwsc_scheduler_release_async() the
+ * same number of times.
+ *
+ * Since: 0.1.0
+ */
+void
+mwsc_scheduler_hold_async (MwscScheduler       *self,
+                           const gchar         *reason,
+                           GCancellable        *cancellable,
+                           GAsyncReadyCallback  callback,
+                           gpointer             user_data)
+{
+  g_return_if_fail (MWSC_IS_SCHEDULER (self));
+  g_return_if_fail (cancellable == NULL || G_IS_CANCELLABLE (cancellable));
+
+  g_return_if_fail (self->hold_count < G_MAXUINT);
+
+  g_autoptr(GTask) task = g_task_new (self, cancellable, callback, user_data);
+  g_task_set_source_tag (task, mwsc_scheduler_hold_async);
+
+  if (!check_invalidated (self, task))
+    return;
+
+  /* Check whether we already hold the scheduler. */
+  if (self->hold_count++ > 0)
+    {
+      g_debug ("Already hold scheduler");
+      g_task_return_boolean (task, TRUE);
+      return;
+    }
+
+  /* Hold the scheduler over D-Bus. */
+  g_debug ("Holding scheduler over D-Bus with reason: %s", reason);
+
+  if (reason == NULL)
+    reason = "";
+
+  g_dbus_proxy_call (self->proxy,
+                     "Hold",
+                     g_variant_new ("(s)", reason),
+                     G_DBUS_CALL_FLAGS_NONE,
+                     -1,  /* default timeout */
+                     cancellable,
+                     hold_cb,
+                     g_steal_pointer (&task));
+}
+
+static void
+hold_cb (GObject      *obj,
+         GAsyncResult *result,
+         gpointer      user_data)
+{
+  GDBusProxy *proxy = G_DBUS_PROXY (obj);
+  g_autoptr(GTask) task = G_TASK (user_data);
+  MwscScheduler *self = g_task_get_source_object (task);
+  g_autoptr(GError) local_error = NULL;
+
+  /* Check for errors. */
+  g_autoptr(GVariant) return_value = NULL;
+  return_value = g_dbus_proxy_call_finish (proxy, result, &local_error);
+
+  if (local_error != NULL)
+    {
+      g_assert (self->hold_count > 0);
+      self->hold_count--;
+      g_task_return_error (task, g_steal_pointer (&local_error));
+    }
+  else
+    {
+      g_task_return_boolean (task, TRUE);
+    }
+}
+
+/**
+ * mwsc_scheduler_hold_finish:
+ * @self: a #MwscScheduleEntry
+ * @result: asynchronous operation result
+ * @error: return location for a #GError
+ *
+ * Finish acquiring a hold on the daemon. See mwsc_scheduler_hold_async().
+ *
+ * Returns: %TRUE on success, %FALSE otherwise
+ * Since: 0.1.0
+ */
+gboolean
+mwsc_scheduler_hold_finish (MwscScheduler  *self,
+                            GAsyncResult   *result,
+                            GError        **error)
+{
+  g_return_val_if_fail (MWSC_IS_SCHEDULER (self), FALSE);
+  g_return_val_if_fail (g_task_is_valid (result, self), FALSE);
+  g_return_val_if_fail (g_async_result_is_tagged (result, mwsc_scheduler_hold_async), FALSE);
+  g_return_val_if_fail (error == NULL || *error == NULL, FALSE);
+
+  return g_task_propagate_boolean (G_TASK (result), error);
+}
+
+static void release_cb (GObject      *obj,
+                        GAsyncResult *result,
+                        gpointer      user_data);
+
+/**
+ * mwsc_scheduler_release_async:
+ * @self: a #MwscScheduler
+ * @cancellable: (nullable): a #GCancellable, or %NULL
+ * @callback: callback to invoke on completion
+ * @user_data: user data to pass to @callback
+ *
+ * Decrement the hold count on the scheduler daemon. See
+ * mwsc_scheduler_hold_async() for information about the concept of holding the
+ * daemon.
+ *
+ * Calls to this function must be paired with calls to
+ * mwsc_scheduler_hold_async() to initially acquire the hold. You must call
+ * this function as many times as mwsc_scheduler_hold_async() is called.
+ *
+ * Since: 0.1.0
+ */
+void
+mwsc_scheduler_release_async (MwscScheduler       *self,
+                              GCancellable        *cancellable,
+                              GAsyncReadyCallback  callback,
+                              gpointer             user_data)
+{
+  g_return_if_fail (MWSC_IS_SCHEDULER (self));
+  g_return_if_fail (cancellable == NULL || G_IS_CANCELLABLE (cancellable));
+
+  g_return_if_fail (self->hold_count > 0);
+
+  g_autoptr(GTask) task = g_task_new (self, cancellable, callback, user_data);
+  g_task_set_source_tag (task, mwsc_scheduler_release_async);
+
+  if (!check_invalidated (self, task))
+    return;
+
+  /* Check whether we would still hold the scheduler after releasing. */
+  if (--self->hold_count > 0)
+    {
+      g_debug ("Still hold scheduler");
+      g_task_return_boolean (task, TRUE);
+      return;
+    }
+
+  /* Release the scheduler over D-Bus. */
+  g_debug ("Releasing scheduler over D-Bus");
+
+  g_dbus_proxy_call (self->proxy,
+                     "Release",
+                     NULL,  /* no arguments */
+                     G_DBUS_CALL_FLAGS_NONE,
+                     -1,  /* default timeout */
+                     cancellable,
+                     release_cb,
+                     g_steal_pointer (&task));
+}
+
+static void
+release_cb (GObject      *obj,
+            GAsyncResult *result,
+            gpointer      user_data)
+{
+  GDBusProxy *proxy = G_DBUS_PROXY (obj);
+  g_autoptr(GTask) task = G_TASK (user_data);
+  MwscScheduler *self = g_task_get_source_object (task);
+  g_autoptr(GError) local_error = NULL;
+
+  /* Check for errors. */
+  g_autoptr(GVariant) return_value = NULL;
+  return_value = g_dbus_proxy_call_finish (proxy, result, &local_error);
+
+  if (local_error != NULL)
+    {
+      g_assert (self->hold_count < G_MAXUINT);
+      self->hold_count++;
+      g_task_return_error (task, g_steal_pointer (&local_error));
+    }
+  else
+    {
+      g_task_return_boolean (task, TRUE);
+    }
+}
+
+/**
+ * mwsc_scheduler_release_finish:
+ * @self: a #MwscScheduleEntry
+ * @result: asynchronous operation result
+ * @error: return location for a #GError
+ *
+ * Finish releasing a hold on the daemon. See mwsc_scheduler_release_async().
+ *
+ * Returns: %TRUE on success, %FALSE otherwise
+ * Since: 0.1.0
+ */
+gboolean
+mwsc_scheduler_release_finish (MwscScheduler  *self,
+                               GAsyncResult   *result,
+                               GError        **error)
+{
+  g_return_val_if_fail (MWSC_IS_SCHEDULER (self), FALSE);
+  g_return_val_if_fail (g_task_is_valid (result, self), FALSE);
+  g_return_val_if_fail (g_async_result_is_tagged (result, mwsc_scheduler_release_async), FALSE);
+  g_return_val_if_fail (error == NULL || *error == NULL, FALSE);
+
+  return g_task_propagate_boolean (G_TASK (result), error);
 }
 
 /**
