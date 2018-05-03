@@ -124,7 +124,7 @@ static void
 test_client_error_handling (Fixture       *fixture,
                             gconstpointer  test_data)
 {
-  const gchar * const vectors[][6] =
+  const gchar * const vectors[][7] =
     {
       { "mogwai-schedule-client", NULL, },
       { "mogwai-schedule-client", "http://example.com/", NULL, },
@@ -132,6 +132,12 @@ test_client_error_handling (Fixture       *fixture,
       { "mogwai-schedule-client", "-p", "not an int", "http://example.com/", "out", NULL, },
       { "mogwai-schedule-client", "-p", "-1", "http://example.com/", "out", NULL, },
       { "mogwai-schedule-client", "-p", "", "http://example.com/", "out", NULL, },
+      { "mogwai-schedule-client", "download", NULL, },
+      { "mogwai-schedule-client", "download", "http://example.com/", NULL, },
+      { "mogwai-schedule-client", "download", "too", "many", "arguments", NULL, },
+      { "mogwai-schedule-client", "download", "-p", "not an int", "http://example.com/", "out", NULL, },
+      { "mogwai-schedule-client", "download", "-p", "-1", "http://example.com/", "out", NULL, },
+      { "mogwai-schedule-client", "download", "-p", "", "http://example.com/", "out", NULL, },
     };
 
   for (gsize i = 0; i < G_N_ELEMENTS (vectors); i++)
@@ -156,10 +162,34 @@ test_client_error_handling (Fixture       *fixture,
     }
 }
 
+/* Test that something is successfully outputted for `download --help`. */
+static void
+test_client_download_help (Fixture       *fixture,
+                           gconstpointer  test_data)
+{
+  g_autoptr(GError) error = NULL;
+
+  g_autoptr(GSubprocess) process = NULL;
+  process = g_subprocess_launcher_spawn (fixture->launcher, &error,
+                                         "mogwai-schedule-client", "download", "--help",
+                                         NULL);
+  g_assert_no_error (error);
+
+  g_autofree gchar *stdout_text = NULL;
+  g_autofree gchar *stderr_text = NULL;
+
+  g_subprocess_communicate_utf8 (process, NULL, NULL, &stdout_text, &stderr_text, &error);
+  g_assert_no_error (error);
+
+  g_assert_cmpint (g_subprocess_get_exit_status (process), ==, 0);
+  g_assert_cmpstr (stdout_text, !=, "");
+  g_assert_cmpstr (stderr_text, ==, "");
+}
+
 /* Test that a failed connection to D-Bus is correctly reported. */
 static void
-test_client_invalid_bus (Fixture       *fixture,
-                         gconstpointer  test_data)
+test_client_download_invalid_bus (Fixture       *fixture,
+                                  gconstpointer  test_data)
 {
   g_autoptr(GError) error = NULL;
 
@@ -185,8 +215,8 @@ test_client_invalid_bus (Fixture       *fixture,
 /* Test that something is downloaded with a simple test, and that status
  * information is printed along the way (unless we pass --quiet). */
 static void
-test_client_simple (Fixture       *fixture,
-                    gconstpointer  test_data)
+test_client_download_simple (Fixture       *fixture,
+                             gconstpointer  test_data)
 {
   g_autoptr(GError) error = NULL;
   gboolean quiet = GPOINTER_TO_INT (test_data);
@@ -204,8 +234,8 @@ test_client_simple (Fixture       *fixture,
 
 /* Test that something is downloaded when passing all arguments to the client. */
 static void
-test_client_all_arguments (Fixture       *fixture,
-                           gconstpointer  test_data)
+test_client_download_all_arguments (Fixture       *fixture,
+                                    gconstpointer  test_data)
 {
   g_autoptr(GError) error = NULL;
 
@@ -231,14 +261,16 @@ main (int    argc,
   g_test_add ("/client/help", Fixture, NULL, setup, test_client_help, teardown);
   g_test_add ("/client/error-handling", Fixture, NULL,
               setup, test_client_error_handling, teardown);
-  g_test_add ("/client/invalid-bus", Fixture, NULL,
-              setup, test_client_invalid_bus, teardown);
-  g_test_add ("/client/simple", Fixture, GINT_TO_POINTER (FALSE)  /* !quiet */,
-              setup, test_client_simple, teardown);
-  g_test_add ("/client/simple/quiet", Fixture, GINT_TO_POINTER (TRUE)  /* quiet */,
-              setup, test_client_simple, teardown);
-  g_test_add ("/client/all-arguments", Fixture, NULL,
-              setup, test_client_all_arguments, teardown);
+  g_test_add ("/client/download/help", Fixture, NULL, setup,
+              test_client_download_help, teardown);
+  g_test_add ("/client/download/invalid-bus", Fixture, NULL,
+              setup, test_client_download_invalid_bus, teardown);
+  g_test_add ("/client/download/simple", Fixture, GINT_TO_POINTER (FALSE)  /* !quiet */,
+              setup, test_client_download_simple, teardown);
+  g_test_add ("/client/download/simple/quiet", Fixture, GINT_TO_POINTER (TRUE)  /* quiet */,
+              setup, test_client_download_simple, teardown);
+  g_test_add ("/client/download/all-arguments", Fixture, NULL,
+              setup, test_client_download_all_arguments, teardown);
 
   return g_test_run ();
 }

@@ -9,7 +9,7 @@ mogwai\-schedule\-client — Download Scheduling Utility
 .SH SYNOPSIS
 .IX Header "SYNOPSIS"
 .\"
-\fBmogwai\-schedule\-client [\-a \fPbus\-address\fB] [\-q] [\-p \fPpriority\fB] [\-r] \fPURI\fB \fPOUTPUT-FILENAME\fB
+\fBmogwai\-schedule\-client download [\-a \fPbus\-address\fB] [\-q] [\-p \fPpriority\fB] [\-r] \fPURI\fB \fPOUTPUT-FILENAME\fB
 .\"
 .SH DESCRIPTION
 .IX Header "DESCRIPTION"
@@ -19,9 +19,12 @@ files. It communicates with \fBmogwai\-scheduled\fP(8) to work out when to start
 downloading the given file in order to avoid bandwidth charges. That might be
 as soon as \fBmogwai\-schedule\-client\fP is started, or it might be hours
 later; the client blocks until the download is started and complete.
+.PP
+Its first argument is a command to run. Currently, the only supported command is
+\fBdownload\fP.
 .\"
-.SH OPTIONS
-.IX Header "OPTIONS"
+.SH \fBdownload\fP OPTIONS
+.IX Header "download OPTIONS"
 .\"
 .IP "\fB\-a\fP, \fB\-\-bus\-address=\fP"
 Address of a D\-Bus message bus to connect to. This is intended for debugging

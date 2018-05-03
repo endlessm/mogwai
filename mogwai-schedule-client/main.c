@@ -450,31 +450,22 @@ log_writer_cb (GLogLevelFlags   log_level,
     return g_log_writer_default (log_level, fields, n_fields, user_data);
 }
 
-int
-main (int   argc,
-      char *argv[])
+/* Command handlers. */
+typedef struct
+{
+  const gchar *argv0;
+  GCancellable *cancellable;  /* (unowned) */
+  int signum;
+} RunContext;
+
+static int
+handle_download (RunContext  *run_context,
+                 int         *argc,
+                 char       **argv[])
 {
   g_autoptr(GError) error = NULL;
 
-  /* Localisation */
-  setlocale (LC_ALL, "");
-  bindtextdomain (GETTEXT_PACKAGE, LOCALEDIR);
-  bind_textdomain_codeset (GETTEXT_PACKAGE, "UTF-8");
-  textdomain (GETTEXT_PACKAGE);
-
-  /* Set up signal handlers. */
-  g_autoptr(GCancellable) cancellable = g_cancellable_new ();
-  gint signum = 0;
-
-  g_auto(SignalData) sigint_data = { NULL, &signum, 0 };
-  sigint_data.cancellable = g_object_ref (cancellable);
-  sigint_data.handler_id = g_unix_signal_add (SIGINT, signal_sigint_cb, &sigint_data);
-
-  g_auto(SignalData) sigterm_data = { NULL, &signum, 0 };
-  sigterm_data.cancellable = g_object_ref (cancellable);
-  sigterm_data.handler_id = g_unix_signal_add (SIGTERM, signal_sigterm_cb, &sigterm_data);
-
-  /* Handle command line parameters. */
+  /* Command line parsing. */
   g_autofree gchar *bus_address = NULL;
   gboolean quiet = FALSE;
   gint priority = 0;
@@ -504,12 +495,12 @@ main (int   argc,
   g_option_context_set_summary (context, _("Schedule and download a large file"));
   g_option_context_add_main_entries (context, entries, GETTEXT_PACKAGE);
 
-  if (!g_option_context_parse (context, &argc, &argv, &error))
+  if (!g_option_context_parse (context, argc, argv, &error))
     {
       g_autofree gchar *message = NULL;
       message = g_strdup_printf (_("Option parsing failed: %s"),
                                  error->message);
-      g_printerr ("%s: %s\n", argv[0], message);
+      g_printerr ("%s: %s\n", run_context->argv0, message);
 
       return EXIT_INVALID_OPTIONS;
     }
@@ -519,7 +510,7 @@ main (int   argc,
       g_autofree gchar *message = NULL;
       message = g_strdup_printf (_("Option parsing failed: %s"),
                                  _("A URI and OUTPUT-FILENAME are required"));
-      g_printerr ("%s: %s\n", argv[0], message);
+      g_printerr ("%s: %s\n", run_context->argv0, message);
 
       return EXIT_INVALID_OPTIONS;
     }
@@ -528,7 +519,7 @@ main (int   argc,
       g_autofree gchar *message = NULL;
       message = g_strdup_printf (_("Option parsing failed: %s"),
                                  _("Too many arguments provided"));
-      g_printerr ("%s: %s\n", argv[0], message);
+      g_printerr ("%s: %s\n", run_context->argv0, message);
 
       return EXIT_INVALID_OPTIONS;
     }
@@ -539,7 +530,7 @@ main (int   argc,
       submessage = g_strdup_printf (_("--priority must be in range [%u, %u]"),
                                     (guint) 0, G_MAXUINT32);
       message = g_strdup_printf (_("Option parsing failed: %s"), submessage);
-      g_printerr ("%s: %s\n", argv[0], message);
+      g_printerr ("%s: %s\n", run_context->argv0, message);
 
       return EXIT_INVALID_OPTIONS;
     }
@@ -556,7 +547,8 @@ main (int   argc,
   if (bus_address == NULL)
     {
       bus_address = g_dbus_address_get_for_bus_sync (G_BUS_TYPE_SYSTEM,
-                                                     cancellable, &error);
+                                                     run_context->cancellable,
+                                                     &error);
     }
 
   if (error != NULL)
@@ -564,7 +556,7 @@ main (int   argc,
       g_autofree gchar *message = NULL;
       message = g_strdup_printf (_("D-Bus system bus unavailable: %s"),
                                  error->message);
-      g_printerr ("%s: %s\n", argv[0], message);
+      g_printerr ("%s: %s\n", run_context->argv0, message);
 
       return EXIT_BUS_UNAVAILABLE;
     }
@@ -574,14 +566,15 @@ main (int   argc,
                                                        G_DBUS_CONNECTION_FLAGS_AUTHENTICATION_CLIENT |
                                                        G_DBUS_CONNECTION_FLAGS_MESSAGE_BUS_CONNECTION,
                                                        NULL  /* observer */,
-                                                       cancellable, &error);
+                                                       run_context->cancellable,
+                                                       &error);
 
   if (error != NULL)
     {
       g_autofree gchar *message = NULL;
       message = g_strdup_printf (_("D-Bus bus ‘%s’ unavailable: %s"),
                                  bus_address, error->message);
-      g_printerr ("%s: %s\n", argv[0], message);
+      g_printerr ("%s: %s\n", run_context->argv0, message);
 
       return EXIT_BUS_UNAVAILABLE;
     }
@@ -589,10 +582,11 @@ main (int   argc,
   /* Create a #GTask for the scheduling and download, and start downloading. */
   g_autoptr(GAsyncResult) download_result = NULL;
   download_uri_async (uri, destination_file, priority, resumable, connection,
-                      cancellable, async_result_cb, &download_result);
+                      run_context->cancellable, async_result_cb, &download_result);
 
   /* Run the main loop until we are signalled or the download finishes. */
-  while (!g_cancellable_is_cancelled (cancellable) && download_result == NULL)
+  while (!g_cancellable_is_cancelled (run_context->cancellable) &&
+         download_result == NULL)
     g_main_context_iteration (NULL, TRUE);
 
   if (download_result != NULL)
@@ -603,14 +597,87 @@ main (int   argc,
       if (error != NULL)
         {
           if (g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED) &&
-              signum != 0)
-            raise (signum);
+              run_context->signum != 0)
+            raise (run_context->signum);
 
-          g_printerr ("%s: %s\n", argv[0], error->message);
+          g_printerr ("%s: %s\n", run_context->argv0, error->message);
 
           return EXIT_FAILED;
         }
     }
 
   return EXIT_OK;
+}
+
+int
+main (int   argc,
+      char *argv[])
+{
+  g_autoptr(GError) error = NULL;
+  RunContext run_context = { argv[0], NULL, 0 };
+
+  /* Localisation */
+  setlocale (LC_ALL, "");
+  bindtextdomain (GETTEXT_PACKAGE, LOCALEDIR);
+  bind_textdomain_codeset (GETTEXT_PACKAGE, "UTF-8");
+  textdomain (GETTEXT_PACKAGE);
+
+  /* Set up signal handlers. */
+  g_autoptr(GCancellable) cancellable = g_cancellable_new ();
+  run_context.cancellable = cancellable;
+
+  g_auto(SignalData) sigint_data = { NULL, &run_context.signum, 0 };
+  sigint_data.cancellable = g_object_ref (cancellable);
+  sigint_data.handler_id = g_unix_signal_add (SIGINT, signal_sigint_cb, &sigint_data);
+
+  g_auto(SignalData) sigterm_data = { NULL, &run_context.signum, 0 };
+  sigterm_data.cancellable = g_object_ref (cancellable);
+  sigterm_data.handler_id = g_unix_signal_add (SIGTERM, signal_sigterm_cb, &sigterm_data);
+
+  /* Handle command line parameters. */
+  g_autoptr(GOptionContext) context = NULL;
+  context = g_option_context_new (_("COMMAND"));
+  g_option_context_set_summary (context, _("Schedule and download a large file"));
+
+  if (argv[1] == NULL)
+    {
+      g_autofree gchar *message = NULL;
+      message = g_strdup_printf (_("Option parsing failed: %s"),
+                                 _("A COMMAND is required"));
+      g_printerr ("%s: %s\n", argv[0], message);
+
+      return EXIT_INVALID_OPTIONS;
+    }
+
+  /* What command are we running? */
+  const gchar *command = argv[1];
+  int exit_status;
+
+  if (g_str_equal (command, "--help"))
+    {
+      g_assert (!g_option_context_parse (context, &argc, &argv, &error));
+
+      g_autofree gchar *message = NULL;
+      message = g_strdup_printf (_("Option parsing failed: %s"),
+                                 error->message);
+      g_printerr ("%s: %s\n", argv[0], message);
+
+      exit_status = EXIT_INVALID_OPTIONS;
+    }
+
+  if (g_str_equal (command, "download"))
+    {
+      argv++;
+      argc--;
+      exit_status = handle_download (&run_context, &argc, &argv);
+    }
+  else
+    {
+      /* Assume the user is using the old-style
+       * `mogwai-schedule-client URI OUTPUT-FILENAME` invocation, and do a
+       * download. */
+      exit_status = handle_download (&run_context, &argc, &argv);
+    }
+
+  return exit_status;
 }
