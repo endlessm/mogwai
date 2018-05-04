@@ -548,7 +548,7 @@ notify_scheduler_properties (MwsScheduleService *self,
   g_autoptr(GError) local_error = NULL;
   g_dbus_connection_emit_signal (self->connection,
                                  NULL,  /* broadcast */
-                                 "/com/endlessm/DownloadManager1/Scheduler",
+                                 "/com/endlessm/DownloadManager1",
                                  "org.freedesktop.DBus.Properties",
                                  "PropertiesChanged",
                                  parameters,
