@@ -517,6 +517,10 @@ notify_scheduler_properties (MwsScheduleService *self,
   g_auto(GVariantDict) changed_properties_dict = G_VARIANT_DICT_INIT (NULL);
   guint32 entries, active_entries;
 
+  g_debug ("%s: Notifying (notify_entries: %s, notify_allow_downloads: %s)",
+           G_STRFUNC, notify_entries ? "yes" : "no",
+           notify_allow_downloads ? "yes" : "no");
+
   if (notify_entries)
     {
       count_entries (self, &entries, &active_entries);
