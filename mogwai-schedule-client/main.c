@@ -450,31 +450,22 @@ log_writer_cb (GLogLevelFlags   log_level,
     return g_log_writer_default (log_level, fields, n_fields, user_data);
 }
 
-int
-main (int   argc,
-      char *argv[])
+/* Command handlers. */
+typedef struct
+{
+  const gchar *argv0;
+  GCancellable *cancellable;  /* (unowned) */
+  int signum;
+} RunContext;
+
+static int
+handle_download (RunContext  *run_context,
+                 int         *argc,
+                 char       **argv[])
 {
   g_autoptr(GError) error = NULL;
 
-  /* Localisation */
-  setlocale (LC_ALL, "");
-  bindtextdomain (GETTEXT_PACKAGE, LOCALEDIR);
-  bind_textdomain_codeset (GETTEXT_PACKAGE, "UTF-8");
-  textdomain (GETTEXT_PACKAGE);
-
-  /* Set up signal handlers. */
-  g_autoptr(GCancellable) cancellable = g_cancellable_new ();
-  gint signum = 0;
-
-  g_auto(SignalData) sigint_data = { NULL, &signum, 0 };
-  sigint_data.cancellable = g_object_ref (cancellable);
-  sigint_data.handler_id = g_unix_signal_add (SIGINT, signal_sigint_cb, &sigint_data);
-
-  g_auto(SignalData) sigterm_data = { NULL, &signum, 0 };
-  sigterm_data.cancellable = g_object_ref (cancellable);
-  sigterm_data.handler_id = g_unix_signal_add (SIGTERM, signal_sigterm_cb, &sigterm_data);
-
-  /* Handle command line parameters. */
+  /* Command line parsing. */
   g_autofree gchar *bus_address = NULL;
   gboolean quiet = FALSE;
   gint priority = 0;
@@ -504,12 +495,12 @@ main (int   argc,
   g_option_context_set_summary (context, _("Schedule and download a large file"));
   g_option_context_add_main_entries (context, entries, GETTEXT_PACKAGE);
 
-  if (!g_option_context_parse (context, &argc, &argv, &error))
+  if (!g_option_context_parse (context, argc, argv, &error))
     {
       g_autofree gchar *message = NULL;
       message = g_strdup_printf (_("Option parsing failed: %s"),
                                  error->message);
-      g_printerr ("%s: %s\n", argv[0], message);
+      g_printerr ("%s: %s\n", run_context->argv0, message);
 
       return EXIT_INVALID_OPTIONS;
     }
@@ -519,7 +510,7 @@ main (int   argc,
       g_autofree gchar *message = NULL;
       message = g_strdup_printf (_("Option parsing failed: %s"),
                                  _("A URI and OUTPUT-FILENAME are required"));
-      g_printerr ("%s: %s\n", argv[0], message);
+      g_printerr ("%s: %s\n", run_context->argv0, message);
 
       return EXIT_INVALID_OPTIONS;
     }
@@ -528,7 +519,7 @@ main (int   argc,
       g_autofree gchar *message = NULL;
       message = g_strdup_printf (_("Option parsing failed: %s"),
                                  _("Too many arguments provided"));
-      g_printerr ("%s: %s\n", argv[0], message);
+      g_printerr ("%s: %s\n", run_context->argv0, message);
 
       return EXIT_INVALID_OPTIONS;
     }
@@ -539,7 +530,7 @@ main (int   argc,
       submessage = g_strdup_printf (_("--priority must be in range [%u, %u]"),
                                     (guint) 0, G_MAXUINT32);
       message = g_strdup_printf (_("Option parsing failed: %s"), submessage);
-      g_printerr ("%s: %s\n", argv[0], message);
+      g_printerr ("%s: %s\n", run_context->argv0, message);
 
       return EXIT_INVALID_OPTIONS;
     }
@@ -556,7 +547,8 @@ main (int   argc,
   if (bus_address == NULL)
     {
       bus_address = g_dbus_address_get_for_bus_sync (G_BUS_TYPE_SYSTEM,
-                                                     cancellable, &error);
+                                                     run_context->cancellable,
+                                                     &error);
     }
 
   if (error != NULL)
@@ -564,7 +556,7 @@ main (int   argc,
       g_autofree gchar *message = NULL;
       message = g_strdup_printf (_("D-Bus system bus unavailable: %s"),
                                  error->message);
-      g_printerr ("%s: %s\n", argv[0], message);
+      g_printerr ("%s: %s\n", run_context->argv0, message);
 
       return EXIT_BUS_UNAVAILABLE;
     }
@@ -574,14 +566,15 @@ main (int   argc,
                                                        G_DBUS_CONNECTION_FLAGS_AUTHENTICATION_CLIENT |
                                                        G_DBUS_CONNECTION_FLAGS_MESSAGE_BUS_CONNECTION,
                                                        NULL  /* observer */,
-                                                       cancellable, &error);
+                                                       run_context->cancellable,
+                                                       &error);
 
   if (error != NULL)
     {
       g_autofree gchar *message = NULL;
       message = g_strdup_printf (_("D-Bus bus ‘%s’ unavailable: %s"),
                                  bus_address, error->message);
-      g_printerr ("%s: %s\n", argv[0], message);
+      g_printerr ("%s: %s\n", run_context->argv0, message);
 
       return EXIT_BUS_UNAVAILABLE;
     }
@@ -589,10 +582,11 @@ main (int   argc,
   /* Create a #GTask for the scheduling and download, and start downloading. */
   g_autoptr(GAsyncResult) download_result = NULL;
   download_uri_async (uri, destination_file, priority, resumable, connection,
-                      cancellable, async_result_cb, &download_result);
+                      run_context->cancellable, async_result_cb, &download_result);
 
   /* Run the main loop until we are signalled or the download finishes. */
-  while (!g_cancellable_is_cancelled (cancellable) && download_result == NULL)
+  while (!g_cancellable_is_cancelled (run_context->cancellable) &&
+         download_result == NULL)
     g_main_context_iteration (NULL, TRUE);
 
   if (download_result != NULL)
@@ -603,14 +597,319 @@ main (int   argc,
       if (error != NULL)
         {
           if (g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED) &&
-              signum != 0)
-            raise (signum);
+              run_context->signum != 0)
+            raise (run_context->signum);
 
-          g_printerr ("%s: %s\n", argv[0], error->message);
+          g_printerr ("%s: %s\n", run_context->argv0, error->message);
 
           return EXIT_FAILED;
         }
     }
 
   return EXIT_OK;
+}
+
+static void invalidated_cb (MwscScheduler *scheduler,
+                            gpointer       user_data);
+static void notify_cb     (GObject        *obj,
+                           GParamSpec     *pspec,
+                           gpointer        user_data);
+
+static gboolean
+cancelled_cb (gpointer user_data)
+{
+  /* No-op: cancellation is handled in the main context loop itself.
+   * This function just exists to avoid a %NULL callback invocation. */
+  return G_SOURCE_REMOVE;
+}
+
+static int
+handle_monitor (RunContext  *run_context,
+                int         *argc,
+                char       **argv[])
+{
+  g_autoptr(GError) error = NULL;
+
+  /* Command line parsing. */
+  g_autofree gchar *bus_address = NULL;
+  gboolean quiet = FALSE;
+
+  const GOptionEntry entries[] =
+    {
+      { "bus-address", 'a', G_OPTION_FLAG_NONE, G_OPTION_ARG_STRING, &bus_address,
+        N_("Address of the D-Bus daemon to connect to (default: system bus)"),
+        N_("ADDRESS") },
+      { "quiet", 'q', G_OPTION_FLAG_NONE, G_OPTION_ARG_NONE, &quiet,
+        N_("Only print error messages and signal notifications"), NULL },
+      { NULL, },
+    };
+
+  g_autoptr(GOptionContext) context = NULL;
+  context = g_option_context_new (NULL);
+  g_option_context_set_summary (context, _("Monitor download scheduler properties"));
+  g_option_context_add_main_entries (context, entries, GETTEXT_PACKAGE);
+
+  if (!g_option_context_parse (context, argc, argv, &error))
+    {
+      g_autofree gchar *message = NULL;
+      message = g_strdup_printf (_("Option parsing failed: %s"),
+                                 error->message);
+      g_printerr ("%s: %s\n", run_context->argv0, message);
+
+      return EXIT_INVALID_OPTIONS;
+    }
+
+  if (*argc > 1)
+    {
+      g_autofree gchar *message = NULL;
+      message = g_strdup_printf (_("Option parsing failed: %s"),
+                                 _("Too many arguments provided"));
+      g_printerr ("%s: %s\n", run_context->argv0, message);
+
+      return EXIT_INVALID_OPTIONS;
+    }
+
+  /* Log handling. */
+  g_log_set_writer_func (log_writer_cb, &quiet, NULL);
+
+  /* Connect to D-Bus. If no address was specified on the command line, use the
+   * system bus. */
+  if (bus_address == NULL)
+    {
+      bus_address = g_dbus_address_get_for_bus_sync (G_BUS_TYPE_SYSTEM,
+                                                     run_context->cancellable,
+                                                     &error);
+    }
+
+  if (error != NULL)
+    {
+      g_autofree gchar *message = NULL;
+      message = g_strdup_printf (_("D-Bus system bus unavailable: %s"),
+                                 error->message);
+      g_printerr ("%s: %s\n", run_context->argv0, message);
+
+      return EXIT_BUS_UNAVAILABLE;
+    }
+
+  g_autoptr(GDBusConnection) connection = NULL;
+  connection = g_dbus_connection_new_for_address_sync (bus_address,
+                                                       G_DBUS_CONNECTION_FLAGS_AUTHENTICATION_CLIENT |
+                                                       G_DBUS_CONNECTION_FLAGS_MESSAGE_BUS_CONNECTION,
+                                                       NULL  /* observer */,
+                                                       run_context->cancellable,
+                                                       &error);
+
+  if (error != NULL)
+    {
+      g_autofree gchar *message = NULL;
+      message = g_strdup_printf (_("D-Bus bus ‘%s’ unavailable: %s"),
+                                 bus_address, error->message);
+      g_printerr ("%s: %s\n", run_context->argv0, message);
+
+      return EXIT_BUS_UNAVAILABLE;
+    }
+
+  /* Connect to signals and start monitoring. */
+  g_message ("Connecting to download scheduler");
+
+  g_autoptr(GAsyncResult) scheduler_result = NULL;
+  mwsc_scheduler_new_full_async (connection,
+                                 "com.endlessm.MogwaiSchedule1",
+                                 "/com/endlessm/DownloadManager1",
+                                 run_context->cancellable,
+                                 async_result_cb,
+                                 &scheduler_result);
+
+  while (scheduler_result == NULL)
+    g_main_context_iteration (NULL, TRUE);
+
+  g_autoptr(MwscScheduler) scheduler = NULL;
+  scheduler = mwsc_scheduler_new_full_finish (scheduler_result, &error);
+
+  if (error != NULL)
+    {
+      g_autofree gchar *message = NULL;
+      message = g_strdup_printf (_("Scheduler could not be created: %s"),
+                                 error->message);
+      g_printerr ("%s: %s\n", run_context->argv0, message);
+
+      return EXIT_BUS_UNAVAILABLE;
+    }
+
+  /* Hold it. */
+  g_autoptr(GAsyncResult) hold_result = NULL;
+  mwsc_scheduler_hold_async (scheduler, _("Monitoring signals"),
+                             run_context->cancellable, async_result_cb,
+                             &hold_result);
+
+  while (hold_result == NULL)
+    g_main_context_iteration (NULL, TRUE);
+
+  if (!mwsc_scheduler_hold_finish (scheduler, hold_result, &error))
+    {
+      g_autofree gchar *message = NULL;
+      message = g_strdup_printf (_("Scheduler could not be held: %s"),
+                                 error->message);
+      g_printerr ("%s: %s\n", run_context->argv0, message);
+
+      return EXIT_FAILED;
+    }
+
+  g_message ("Connected to download scheduler");
+
+  /* Connect to signals. */
+  gboolean invalidated = FALSE;
+
+  g_signal_connect (scheduler, "invalidated",
+                    (GCallback) invalidated_cb, &invalidated);
+  g_signal_connect (scheduler, "notify", (GCallback) notify_cb, NULL);
+
+  g_autoptr(GSource) cancellable_source = NULL;
+  cancellable_source = g_cancellable_source_new (run_context->cancellable);
+  g_source_set_callback (cancellable_source, cancelled_cb, NULL, NULL);
+  g_source_attach (cancellable_source, NULL);
+
+  /* Run the main loop until we are signalled. */
+  while (!g_cancellable_is_cancelled (run_context->cancellable) &&
+         !invalidated)
+    g_main_context_iteration (NULL, TRUE);
+
+  /* Release it. Do not pass the #GCancellable in, as it’s probably already
+   * cancelled. */
+  if (!invalidated)
+    {
+      g_autoptr(GAsyncResult) release_result = NULL;
+      mwsc_scheduler_release_async (scheduler, NULL,
+                                    async_result_cb, &release_result);
+
+      while (release_result == NULL)
+        g_main_context_iteration (NULL, TRUE);
+
+      if (!mwsc_scheduler_release_finish (scheduler, release_result, &error))
+        {
+          g_autofree gchar *message = NULL;
+          message = g_strdup_printf (_("Scheduler could not be released: %s"),
+                                     error->message);
+          g_printerr ("%s: %s\n", run_context->argv0, message);
+
+          return EXIT_FAILED;
+        }
+    }
+
+  /* Work out how to exit. If the user cancelled the monitor with SIGINT, just
+   * exit gracefully. */
+  if (g_cancellable_is_cancelled (run_context->cancellable))
+    {
+      if (run_context->signum == SIGINT)
+        return EXIT_OK;
+
+      if (run_context->signum != 0)
+        raise (run_context->signum);
+
+      g_printerr ("%s: %s\n", run_context->argv0, error->message);
+
+      return EXIT_FAILED;
+    }
+
+  return EXIT_OK;
+}
+
+static void
+invalidated_cb (MwscScheduler *scheduler,
+                gpointer       user_data)
+{
+  g_print ("%s\n", _("Scheduler invalidated"));
+
+  gboolean *out_invalidated = user_data;
+  *out_invalidated = TRUE;
+  g_main_context_wakeup (NULL);
+}
+
+static void
+notify_cb (GObject    *obj,
+           GParamSpec *pspec,
+           gpointer    user_data)
+{
+  g_autofree gchar *message = g_strdup_printf (_("%s was notified"),
+                                               g_param_spec_get_name (pspec));
+  g_print ("%s\n", message);
+}
+
+int
+main (int   argc,
+      char *argv[])
+{
+  g_autoptr(GError) error = NULL;
+  RunContext run_context = { argv[0], NULL, 0 };
+
+  /* Localisation */
+  setlocale (LC_ALL, "");
+  bindtextdomain (GETTEXT_PACKAGE, LOCALEDIR);
+  bind_textdomain_codeset (GETTEXT_PACKAGE, "UTF-8");
+  textdomain (GETTEXT_PACKAGE);
+
+  /* Set up signal handlers. */
+  g_autoptr(GCancellable) cancellable = g_cancellable_new ();
+  run_context.cancellable = cancellable;
+
+  g_auto(SignalData) sigint_data = { NULL, &run_context.signum, 0 };
+  sigint_data.cancellable = g_object_ref (cancellable);
+  sigint_data.handler_id = g_unix_signal_add (SIGINT, signal_sigint_cb, &sigint_data);
+
+  g_auto(SignalData) sigterm_data = { NULL, &run_context.signum, 0 };
+  sigterm_data.cancellable = g_object_ref (cancellable);
+  sigterm_data.handler_id = g_unix_signal_add (SIGTERM, signal_sigterm_cb, &sigterm_data);
+
+  /* Handle command line parameters. */
+  g_autoptr(GOptionContext) context = NULL;
+  context = g_option_context_new (_("COMMAND"));
+  g_option_context_set_summary (context, _("Schedule and download a large file"));
+
+  if (argv[1] == NULL)
+    {
+      g_autofree gchar *message = NULL;
+      message = g_strdup_printf (_("Option parsing failed: %s"),
+                                 _("A COMMAND is required"));
+      g_printerr ("%s: %s\n", argv[0], message);
+
+      return EXIT_INVALID_OPTIONS;
+    }
+
+  /* What command are we running? */
+  const gchar *command = argv[1];
+  int exit_status;
+
+  if (g_str_equal (command, "--help"))
+    {
+      g_assert (!g_option_context_parse (context, &argc, &argv, &error));
+
+      g_autofree gchar *message = NULL;
+      message = g_strdup_printf (_("Option parsing failed: %s"),
+                                 error->message);
+      g_printerr ("%s: %s\n", argv[0], message);
+
+      exit_status = EXIT_INVALID_OPTIONS;
+    }
+
+  if (g_str_equal (command, "download"))
+    {
+      argv++;
+      argc--;
+      exit_status = handle_download (&run_context, &argc, &argv);
+    }
+  else if (g_str_equal (command, "monitor"))
+    {
+      argv++;
+      argc--;
+      exit_status = handle_monitor (&run_context, &argc, &argv);
+    }
+  else
+    {
+      /* Assume the user is using the old-style
+       * `mogwai-schedule-client URI OUTPUT-FILENAME` invocation, and do a
+       * download. */
+      exit_status = handle_download (&run_context, &argc, &argv);
+    }
+
+  return exit_status;
 }

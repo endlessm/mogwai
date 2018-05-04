@@ -93,6 +93,22 @@ GPtrArray         *mwsc_scheduler_schedule_entries_finish (MwscScheduler        
                                                            GAsyncResult         *result,
                                                            GError              **error);
 
+void               mwsc_scheduler_hold_async     (MwscScheduler        *self,
+                                                  const gchar          *reason,
+                                                  GCancellable         *cancellable,
+                                                  GAsyncReadyCallback   callback,
+                                                  gpointer              user_data);
+gboolean           mwsc_scheduler_hold_finish    (MwscScheduler        *self,
+                                                  GAsyncResult         *result,
+                                                  GError              **error);
+void               mwsc_scheduler_release_async  (MwscScheduler        *self,
+                                                  GCancellable         *cancellable,
+                                                  GAsyncReadyCallback   callback,
+                                                  gpointer              user_data);
+gboolean           mwsc_scheduler_release_finish (MwscScheduler        *self,
+                                                  GAsyncResult         *result,
+                                                  GError              **error);
+
 gboolean           mwsc_scheduler_get_allow_downloads (MwscScheduler *self);
 
 G_END_DECLS

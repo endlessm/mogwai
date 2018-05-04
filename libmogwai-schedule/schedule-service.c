@@ -126,6 +126,24 @@ static void mws_schedule_service_scheduler_schedule_entries   (MwsScheduleServic
                                                                const gchar           *sender,
                                                                GVariant              *parameters,
                                                                GDBusMethodInvocation *invocation);
+static void mws_schedule_service_scheduler_hold               (MwsScheduleService    *self,
+                                                               GDBusConnection       *connection,
+                                                               const gchar           *sender,
+                                                               GVariant              *parameters,
+                                                               GDBusMethodInvocation *invocation);
+static void mws_schedule_service_scheduler_release            (MwsScheduleService    *self,
+                                                               GDBusConnection       *connection,
+                                                               const gchar           *sender,
+                                                               GVariant              *parameters,
+                                                               GDBusMethodInvocation *invocation);
+
+static gboolean mws_schedule_service_hold    (MwsScheduleService  *self,
+                                              const gchar         *sender,
+                                              const gchar         *reason,
+                                              GError             **error);
+static gboolean mws_schedule_service_release (MwsScheduleService  *self,
+                                              const gchar         *sender,
+                                              GError             **error);
 
 static void entries_changed_cb        (MwsScheduler    *scheduler,
                                        GPtrArray       *added,
@@ -141,6 +159,9 @@ static void allow_downloads_changed_cb (GObject        *obj,
 static void entry_notify_cb           (GObject         *obj,
                                        GParamSpec      *pspec,
                                        gpointer         user_data);
+static void peer_vanished_cb         (MwsPeerManager   *manager,
+                                      const gchar      *name,
+                                      gpointer          user_data);
 
 static const GDBusErrorEntry scheduler_error_map[] =
   {
@@ -175,6 +196,10 @@ struct _MwsScheduleService
   GCancellable *cancellable;  /* (owned) */
 
   MwsScheduler *scheduler;  /* (owned) */
+
+  /* Maps D-Bus unique names to their reasons for holding the service open,
+   * provided in calls to Hold(). */
+  GHashTable *hold_reasons;  /* (owned) (element-type utf8 utf8) */
 };
 
 typedef enum
@@ -248,7 +273,8 @@ mws_schedule_service_class_init (MwsScheduleServiceClass *klass)
    * MwsScheduleService:busy:
    *
    * %TRUE if the D-Bus API is busy; for example if there are currently any
-   * schedule entries exposed on the bus.
+   * schedule entries exposed on the bus, or if a client has called Hold()
+   * without yet calling Release().
    *
    * Since: 0.1.0
    */
@@ -274,6 +300,8 @@ static void
 mws_schedule_service_init (MwsScheduleService *self)
 {
   self->cancellable = g_cancellable_new ();
+  self->hold_reasons = g_hash_table_new_full (g_str_hash, g_str_equal,
+                                              g_free, g_free);
 }
 
 static GPtrArray *
@@ -317,6 +345,7 @@ mws_schedule_service_dispose (GObject *object)
    * schedule entries. */
   if (self->scheduler != NULL)
     {
+      g_signal_handlers_disconnect_by_data (mws_scheduler_get_peer_manager (self->scheduler), self);
       g_signal_handlers_disconnect_by_data (self->scheduler, self);
 
       GHashTable *entries;  /* (element-type utf8 MwsScheduleEntry) */
@@ -331,6 +360,28 @@ mws_schedule_service_dispose (GObject *object)
   g_clear_object (&self->connection);
   g_clear_pointer (&self->object_path, g_free);
   g_clear_object (&self->cancellable);
+
+  if (self->hold_reasons != NULL &&
+      g_hash_table_size (self->hold_reasons) > 0)
+    {
+      g_debug ("Disposing of MwsScheduleService while still held by %u peers",
+               g_hash_table_size (self->hold_reasons));
+
+      /* Release all the services. We have to get all the keys first, since
+       * mws_schedule_service_release() modifies the hash table. */
+      g_autofree const gchar **names =
+          (const gchar **) g_hash_table_get_keys_as_array (self->hold_reasons, NULL);
+
+      for (gsize i = 0; names[i] != NULL; i++)
+        {
+          g_autoptr(GError) local_error = NULL;
+
+          if (!mws_schedule_service_release (self, names[i], &local_error))
+            g_debug ("Error releasing service for peer ‘%s’: %s",
+                     names[i], local_error->message);
+        }
+    }
+  g_clear_pointer (&self->hold_reasons, g_hash_table_unref);
 
   /* Chain up to the parent class */
   G_OBJECT_CLASS (mws_schedule_service_parent_class)->dispose (object);
@@ -397,6 +448,8 @@ mws_schedule_service_set_property (GObject      *object,
                         (GCallback) active_entries_changed_cb, self);
       g_signal_connect (self->scheduler, "notify::allow-downloads",
                         (GCallback) allow_downloads_changed_cb, self);
+      g_signal_connect (mws_scheduler_get_peer_manager (self->scheduler),
+                        "peer-vanished", (GCallback) peer_vanished_cb, self);
 
       break;
     }
@@ -676,6 +729,21 @@ entry_notify_cb (GObject    *obj,
   if (local_error != NULL)
     g_debug ("Error emitting PropertiesChanged signal: %s",
              local_error->message);
+}
+
+static void
+peer_vanished_cb (MwsPeerManager *manager,
+                  const gchar    *name,
+                  gpointer        user_data)
+{
+  MwsScheduleService *self = MWS_SCHEDULE_SERVICE (user_data);
+  g_autoptr(GError) local_error = NULL;
+
+  g_debug ("%s: Peer ‘%s’ vanished", G_STRFUNC, name);
+
+  if (!mws_schedule_service_release (self, name, &local_error))
+    g_debug ("Error releasing service for peer ‘%s’: %s",
+             name, local_error->message);
 }
 
 /**
@@ -1157,6 +1225,10 @@ scheduler_methods[] =
       mws_schedule_service_scheduler_schedule_entries },
     { "com.endlessm.DownloadManager1.Scheduler", "ScheduleEntries",
       mws_schedule_service_scheduler_schedule_entries },
+    { "com.endlessm.DownloadManager1.Scheduler", "Hold",
+      mws_schedule_service_scheduler_hold },
+    { "com.endlessm.DownloadManager1.Scheduler", "Release",
+      mws_schedule_service_scheduler_release },
   };
 
 G_STATIC_ASSERT (G_N_ELEMENTS (scheduler_methods) ==
@@ -1472,6 +1544,156 @@ schedule_cb (GObject      *obj,
     }
 }
 
+typedef struct
+{
+  MwsScheduleService *schedule_service;  /* (owned) */
+  GDBusMethodInvocation *invocation;  /* (owned) */
+} HoldData;
+
+static void
+hold_data_free (HoldData *data)
+{
+  g_clear_object (&data->invocation);
+  g_clear_object (&data->schedule_service);
+  g_free (data);
+}
+
+G_DEFINE_AUTOPTR_CLEANUP_FUNC (HoldData, hold_data_free)
+
+static HoldData *
+hold_data_new (MwsScheduleService    *schedule_service,
+               GDBusMethodInvocation *invocation)
+{
+  g_autoptr(HoldData) data = g_new0 (HoldData, 1);
+  data->schedule_service = g_object_ref (schedule_service);
+  data->invocation = g_object_ref (invocation);
+  return g_steal_pointer (&data);
+}
+
+static void hold_cb (GObject      *obj,
+                     GAsyncResult *result,
+                     gpointer      user_data);
+
+static void
+mws_schedule_service_scheduler_hold (MwsScheduleService    *self,
+                                     GDBusConnection       *connection,
+                                     const gchar           *sender,
+                                     GVariant              *parameters,
+                                     GDBusMethodInvocation *invocation)
+{
+  /* Load the peer’s credentials so we can watch to see if it disappears in future. */
+  mws_peer_manager_ensure_peer_credentials_async (mws_scheduler_get_peer_manager (self->scheduler),
+                                                  sender, self->cancellable,
+                                                  hold_cb, hold_data_new (self, invocation));
+}
+
+static void
+hold_cb (GObject      *obj,
+         GAsyncResult *result,
+         gpointer      user_data)
+{
+  MwsPeerManager *peer_manager = MWS_PEER_MANAGER (obj);
+  g_autoptr(HoldData) data = user_data;
+  MwsScheduleService *self = data->schedule_service;
+  GDBusMethodInvocation *invocation = data->invocation;
+  g_autoptr(GError) local_error = NULL;
+
+  /* Finish looking up the sender. */
+  g_autofree gchar *sender_path = NULL;
+  sender_path = mws_peer_manager_ensure_peer_credentials_finish (peer_manager,
+                                                                 result, &local_error);
+
+  if (sender_path == NULL)
+    {
+      g_prefix_error (&local_error, _("Error looking up peer credentials: "));
+      g_dbus_method_invocation_return_gerror (invocation, local_error);
+      return;
+    }
+
+  /* Actually hold the service. */
+  const gchar *sender = g_dbus_method_invocation_get_sender (invocation);
+  const gchar *reason;
+  g_variant_get (g_dbus_method_invocation_get_parameters (invocation), "(&s)", &reason);
+
+  if (!mws_schedule_service_hold (self, sender, reason, &local_error))
+    g_dbus_method_invocation_return_gerror (invocation, local_error);
+  else
+    g_dbus_method_invocation_return_value (invocation, NULL);
+}
+
+static void
+mws_schedule_service_scheduler_release (MwsScheduleService    *self,
+                                        GDBusConnection       *connection,
+                                        const gchar           *sender,
+                                        GVariant              *parameters,
+                                        GDBusMethodInvocation *invocation)
+{
+  g_autoptr(GError) local_error = NULL;
+  if (!mws_schedule_service_release (self, sender, &local_error))
+    g_dbus_method_invocation_return_gerror (invocation, local_error);
+  else
+    g_dbus_method_invocation_return_value (invocation, NULL);
+}
+
+static gboolean
+mws_schedule_service_hold (MwsScheduleService  *self,
+                           const gchar         *sender,
+                           const gchar         *reason,
+                           GError             **error)
+{
+  /* Has this client already got a hold on the service? */
+  const gchar *old_reason = g_hash_table_lookup (self->hold_reasons, sender);
+
+  if (old_reason != NULL)
+    {
+      g_set_error (error, G_DBUS_ERROR, G_DBUS_ERROR_FAILED,
+                   _("D-Bus peer ‘%s’ already has a hold on the scheduler"),
+                   sender);
+      return FALSE;
+    }
+
+  /* Add the hold. */
+  g_message ("Holding service for D-Bus peer ‘%s’ because: %s", sender, reason);
+  g_hash_table_insert (self->hold_reasons, g_strdup (sender), g_strdup (reason));
+
+  if (g_hash_table_size (self->hold_reasons) == 1)
+    {
+      /* This has potentially changed. */
+      g_object_notify (G_OBJECT (self), "busy");
+    }
+
+  return TRUE;
+}
+
+static gboolean
+mws_schedule_service_release (MwsScheduleService  *self,
+                              const gchar         *sender,
+                              GError             **error)
+{
+  /* Has this client actually got a hold on the service? */
+  const gchar *reason = g_hash_table_lookup (self->hold_reasons, sender);
+
+  if (reason == NULL)
+    {
+      g_set_error (error, G_DBUS_ERROR, G_DBUS_ERROR_FAILED,
+                   _("D-Bus peer ‘%s’ does not have a hold on the scheduler"),
+                   sender);
+      return FALSE;
+    }
+
+  /* Drop the hold. */
+  g_message ("Releasing hold on service for D-Bus peer ‘%s’", sender);
+  g_hash_table_remove (self->hold_reasons, sender);
+
+  if (g_hash_table_size (self->hold_reasons) == 0)
+    {
+      /* This has potentially changed. */
+      g_object_notify (G_OBJECT (self), "busy");
+    }
+
+  return TRUE;
+}
+
 /**
  * mws_schedule_service_new:
  * @connection: (transfer none): D-Bus connection to export objects on
@@ -1516,5 +1738,6 @@ mws_schedule_service_get_busy (MwsScheduleService *self)
   g_return_val_if_fail (MWS_IS_SCHEDULE_SERVICE (self), FALSE);
 
   GHashTable *entries = mws_scheduler_get_entries (self->scheduler);
-  return (self->entry_subtree_id != 0 && g_hash_table_size (entries) > 0);
+  return ((self->entry_subtree_id != 0 && g_hash_table_size (entries) > 0) ||
+          g_hash_table_size (self->hold_reasons) > 0);
 }

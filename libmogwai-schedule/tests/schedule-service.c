@@ -130,15 +130,17 @@ static GVariant *
 scheduler_call_method (BusFixture    *fixture,
                        const gchar   *method_name,
                        GVariant      *parameters,
-                       GVariantType  *return_type,
+                       GVariantType  *reply_type,
                        GError       **error)
 {
+  g_assert (reply_type != NULL);
+
   g_autoptr(GAsyncResult) result = NULL;
   g_dbus_connection_call (fixture->client_connection,
                           g_dbus_connection_get_unique_name (fixture->server_connection),
                           "/test",
                           "com.endlessm.DownloadManager1.Scheduler",
-                          method_name, parameters, return_type,
+                          method_name, parameters, reply_type,
                           G_DBUS_CALL_FLAGS_NO_AUTO_START,
                           1000, NULL, async_result_cb, &result);
 
@@ -327,6 +329,100 @@ test_service_dbus_schedule_entries_full (BusFixture    *fixture,
   g_assert_null (entry_paths_variant);
 }
 
+/* Test that Hold() and Release() affect mws_schedule_service_get_busy(). */
+static void
+test_service_dbus_hold_normal (BusFixture    *fixture,
+                               gconstpointer  test_data)
+{
+  g_autoptr(GError) local_error = NULL;
+
+  /* The schedule service shouldn’t be busy to begin with. */
+  g_assert_false (mws_schedule_service_get_busy (fixture->service));
+
+  /* Hold it. */
+  g_autoptr(GVariant) unit_variant1 = NULL;
+  unit_variant1 = scheduler_call_method (fixture, "Hold",
+                                         g_variant_new ("(s)", "Test reason"),
+                                         G_VARIANT_TYPE_UNIT,
+                                         &local_error);
+  g_assert_no_error (local_error);
+  g_assert_nonnull (unit_variant1);
+
+  /* Should be busy now. */
+  g_assert_true (mws_schedule_service_get_busy (fixture->service));
+
+  /* Release it. */
+  g_autoptr(GVariant) unit_variant2 = NULL;
+  unit_variant2 = scheduler_call_method (fixture, "Release",
+                                         NULL,  /* no arguments */
+                                         G_VARIANT_TYPE_UNIT,
+                                         &local_error);
+  g_assert_no_error (local_error);
+  g_assert_nonnull (unit_variant2);
+
+  /* Should not be busy again. */
+  g_assert_false (mws_schedule_service_get_busy (fixture->service));
+}
+
+/* Test that calling Hold() twice results in an error. */
+static void
+test_service_dbus_hold_twice (BusFixture    *fixture,
+                              gconstpointer  test_data)
+{
+  g_autoptr(GError) local_error = NULL;
+
+  /* The schedule service shouldn’t be busy to begin with. */
+  g_assert_false (mws_schedule_service_get_busy (fixture->service));
+
+  /* Hold it. */
+  g_autoptr(GVariant) unit_variant1 = NULL;
+  unit_variant1 = scheduler_call_method (fixture, "Hold",
+                                         g_variant_new ("(s)", "Test reason"),
+                                         G_VARIANT_TYPE_UNIT,
+                                         &local_error);
+  g_assert_no_error (local_error);
+  g_assert_nonnull (unit_variant1);
+
+  /* Should be busy now. */
+  g_assert_true (mws_schedule_service_get_busy (fixture->service));
+
+  /* Hold it again; this should error. */
+  g_autoptr(GVariant) unit_variant2 = NULL;
+  unit_variant2 = scheduler_call_method (fixture, "Hold",
+                                         g_variant_new ("(s)", "Test reason 2"),
+                                         G_VARIANT_TYPE_UNIT,
+                                         &local_error);
+  g_assert_error (local_error, G_DBUS_ERROR, G_DBUS_ERROR_FAILED);
+  g_assert_null (unit_variant2);
+
+  /* Should still be busy now. */
+  g_assert_true (mws_schedule_service_get_busy (fixture->service));
+}
+
+/* Test that calling Release() twice (or once without calling Hold() results in
+ * an error. */
+static void
+test_service_dbus_release_twice (BusFixture    *fixture,
+                                 gconstpointer  test_data)
+{
+  g_autoptr(GError) local_error = NULL;
+
+  /* The schedule service shouldn’t be busy to begin with. */
+  g_assert_false (mws_schedule_service_get_busy (fixture->service));
+
+  /* Release it. */
+  g_autoptr(GVariant) unit_variant1 = NULL;
+  unit_variant1 = scheduler_call_method (fixture, "Release",
+                                         NULL,  /* no arguments */
+                                         G_VARIANT_TYPE_UNIT,
+                                         &local_error);
+  g_assert_error (local_error, G_DBUS_ERROR, G_DBUS_ERROR_FAILED);
+  g_assert_null (unit_variant1);
+
+  /* Should still not be busy. */
+  g_assert_false (mws_schedule_service_get_busy (fixture->service));
+}
+
 int
 main (int    argc,
       char **argv)
@@ -356,6 +452,12 @@ main (int    argc,
               bus_teardown);
   g_test_add ("/schedule-service/dbus/schedule-entries/full", BusFixture, NULL,
               bus_setup, test_service_dbus_schedule_entries_full, bus_teardown);
+  g_test_add ("/schedule-service/dbus/hold/normal", BusFixture, NULL,
+              bus_setup, test_service_dbus_hold_normal, bus_teardown);
+  g_test_add ("/schedule-service/dbus/hold/twice", BusFixture, NULL,
+              bus_setup, test_service_dbus_hold_twice, bus_teardown);
+  g_test_add ("/schedule-service/dbus/release/twice", BusFixture, NULL,
+              bus_setup, test_service_dbus_release_twice, bus_teardown);
 
   return g_test_run ();
 }
