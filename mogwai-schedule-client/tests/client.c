@@ -70,7 +70,7 @@ async_result_cb (GObject      *obj,
   *result_out = g_object_ref (result);
 }
 
-static void
+static gboolean
 timeout_cb (gpointer user_data)
 {
   GSubprocess *process = G_SUBPROCESS (user_data);

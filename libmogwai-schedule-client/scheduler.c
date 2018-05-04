@@ -470,7 +470,7 @@ proxy_properties_changed_cb (GDBusProxy *proxy,
 
   gboolean downloads_allowed;
   if (g_variant_lookup (changed_properties, "DownloadsAllowed", "b", &downloads_allowed))
-    g_object_notify (G_OBJECT (proxy), "allow-downloads");
+    g_object_notify (G_OBJECT (self), "allow-downloads");
 }
 
 static gboolean

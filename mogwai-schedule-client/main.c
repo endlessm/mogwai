@@ -829,8 +829,16 @@ notify_cb (GObject    *obj,
            GParamSpec *pspec,
            gpointer    user_data)
 {
-  g_autofree gchar *message = g_strdup_printf (_("%s was notified"),
-                                               g_param_spec_get_name (pspec));
+  MwscScheduler *scheduler = MWSC_SCHEDULER (obj);
+  const gchar *property_name = g_param_spec_get_name (pspec);
+  g_autofree gchar *message = NULL;
+
+  if (g_str_equal (property_name, "allow-downloads"))
+    message = g_strdup_printf (_("%s changed to %s"), property_name,
+                               mwsc_scheduler_get_allow_downloads (scheduler) ? "yes" : "no");
+  else
+    message = g_strdup_printf (_("%s changed value"), property_name);
+
   g_print ("%s\n", message);
 }
 

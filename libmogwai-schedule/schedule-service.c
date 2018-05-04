@@ -517,6 +517,10 @@ notify_scheduler_properties (MwsScheduleService *self,
   g_auto(GVariantDict) changed_properties_dict = G_VARIANT_DICT_INIT (NULL);
   guint32 entries, active_entries;
 
+  g_debug ("%s: Notifying (notify_entries: %s, notify_allow_downloads: %s)",
+           G_STRFUNC, notify_entries ? "yes" : "no",
+           notify_allow_downloads ? "yes" : "no");
+
   if (notify_entries)
     {
       count_entries (self, &entries, &active_entries);
@@ -544,7 +548,7 @@ notify_scheduler_properties (MwsScheduleService *self,
   g_autoptr(GError) local_error = NULL;
   g_dbus_connection_emit_signal (self->connection,
                                  NULL,  /* broadcast */
-                                 "/com/endlessm/DownloadManager1/Scheduler",
+                                 "/com/endlessm/DownloadManager1",
                                  "org.freedesktop.DBus.Properties",
                                  "PropertiesChanged",
                                  parameters,
@@ -684,7 +688,8 @@ allow_downloads_changed_cb (GObject    *obj,
 {
   MwsScheduleService *self = MWS_SCHEDULE_SERVICE (user_data);
 
-  /* The com.endlessm.DownloadManager1.Scheduler property potentially changed */
+  /* The com.endlessm.DownloadManager1.Scheduler.DownloadsAllowed property
+   * potentially changed */
   notify_scheduler_properties (self, FALSE, TRUE);
 }
 
