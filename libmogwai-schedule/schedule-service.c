@@ -688,7 +688,8 @@ allow_downloads_changed_cb (GObject    *obj,
 {
   MwsScheduleService *self = MWS_SCHEDULE_SERVICE (user_data);
 
-  /* The com.endlessm.DownloadManager1.Scheduler property potentially changed */
+  /* The com.endlessm.DownloadManager1.Scheduler.DownloadsAllowed property
+   * potentially changed */
   notify_scheduler_properties (self, FALSE, TRUE);
 }
 
