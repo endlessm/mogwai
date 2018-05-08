@@ -301,11 +301,12 @@ mws_schedule_entry_new_from_variant (const gchar  *owner,
                         g_variant_is_of_type (parameters, G_VARIANT_TYPE_VARDICT), NULL);
   g_return_val_if_fail (error == NULL || *error == NULL, NULL);
 
+  gsize n_parameters = (parameters != NULL) ? g_variant_n_children (parameters) : 0;
+
   g_autoptr(GPtrArray) names = NULL;
-  names = g_ptr_array_new_full (g_variant_n_children (parameters), NULL);
+  names = g_ptr_array_new_full (n_parameters, NULL);
   g_autoptr(GArray) values = NULL;
-  values = g_array_sized_new (FALSE, TRUE, sizeof (GValue),
-                              g_variant_n_children (parameters));
+  values = g_array_sized_new (FALSE, TRUE, sizeof (GValue), n_parameters);
   g_array_set_clear_func (values, (GDestroyNotify) g_value_unset);
 
   if (parameters != NULL)
