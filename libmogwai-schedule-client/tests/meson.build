@@ -10,9 +10,11 @@ envs = test_env + [
   'G_TEST_BUILDDIR=' + meson.current_build_dir(),
 ]
 
+# FIXME: Would be good to drop the ‘client-’ prefix once Meson doesn’t clash
+# the produced files with those from libmogwai-schedule/tests/.
 test_programs = [
-  ['schedule-entry', [], deps],
-  ['scheduler', [], deps],
+  ['client-schedule-entry', [], deps],
+  ['client-scheduler', [], deps],
 ]
 
 installed_tests_metadir = join_paths(datadir, 'installed-tests',
