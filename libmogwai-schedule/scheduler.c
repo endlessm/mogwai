@@ -559,8 +559,8 @@ mws_scheduler_get_peer_manager (MwsScheduler *self)
  * Update the set of schedule entries in the scheduler, adding all entries in
  * @added, and removing all those in @removed.
  *
- * Entries in @added which are already in the scheduler are duplicated; entries
- * in @removed which are not in the scheduler are ignored.
+ * Entries in @added which are already in the scheduler, and entries in @removed
+ * which are not in the scheduler, are ignored.
  *
  * If adding any of @added to the scheduler would cause it to exceed
  * #MwsScheduler:max-entries, %MWS_SCHEDULER_ERROR_FULL will be returned and
