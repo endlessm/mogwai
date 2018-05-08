@@ -583,6 +583,8 @@ mws_scheduler_update_entries (MwsScheduler  *self,
   actually_added = g_ptr_array_new_with_free_func (g_object_unref);
   g_autoptr(GPtrArray) actually_removed = NULL;  /* (element-type MwsScheduleEntry) */
   actually_removed = g_ptr_array_new_with_free_func (g_object_unref);
+  g_autoptr(GPtrArray) actually_active_removed = NULL;  /* (element-type MwsScheduleEntry) */
+  actually_active_removed = g_ptr_array_new_with_free_func (g_object_unref);
 
   /* Check resource limits. */
   if (added != NULL &&
@@ -608,9 +610,14 @@ mws_scheduler_update_entries (MwsScheduler  *self,
       gpointer value;
       if (g_hash_table_lookup_extended (self->entries, entry_id, NULL, &value))
         {
+          gboolean was_active = mws_scheduler_is_entry_active (self, MWS_SCHEDULE_ENTRY (value));
+
           g_autoptr(MwsScheduleEntry) entry = value;
           g_hash_table_steal (self->entries, entry_id);
           g_assert (g_hash_table_remove (self->entries_data, entry_id));
+
+          if (was_active)
+            g_ptr_array_add (actually_active_removed, g_object_ref (entry));
           g_ptr_array_add (actually_removed, g_steal_pointer (&entry));
         }
       else
@@ -644,6 +651,14 @@ mws_scheduler_update_entries (MwsScheduler  *self,
         }
     }
 
+  if (actually_active_removed->len > 0)
+    {
+      g_debug ("%s: Emitting active-entries-changed with %u added, %u removed",
+               G_STRFUNC, (guint) 0, actually_active_removed->len);
+      g_signal_emit_by_name (G_OBJECT (self), "active-entries-changed",
+                             NULL, actually_active_removed);
+    }
+
   if (actually_added->len > 0 || actually_removed->len > 0)
     {
       g_debug ("%s: Emitting entries-changed with %u added, %u removed",
@@ -652,7 +667,7 @@ mws_scheduler_update_entries (MwsScheduler  *self,
       g_signal_emit_by_name (G_OBJECT (self), "entries-changed",
                              actually_added, actually_removed);
 
-      /* Trigger a reschedule due to the new entries. */
+      /* Trigger a reschedule due to the new or removed entries. */
       mws_scheduler_reschedule (self);
     }
 
