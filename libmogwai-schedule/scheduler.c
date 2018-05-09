@@ -583,8 +583,8 @@ mws_scheduler_update_entries (MwsScheduler  *self,
   actually_added = g_ptr_array_new_with_free_func (g_object_unref);
   g_autoptr(GPtrArray) actually_removed = NULL;  /* (element-type MwsScheduleEntry) */
   actually_removed = g_ptr_array_new_with_free_func (g_object_unref);
-  g_autoptr(GPtrArray) actually_active_removed = NULL;  /* (element-type MwsScheduleEntry) */
-  actually_active_removed = g_ptr_array_new_with_free_func (g_object_unref);
+  g_autoptr(GPtrArray) actually_removed_active = NULL;  /* (element-type MwsScheduleEntry) */
+  actually_removed_active = g_ptr_array_new_with_free_func (g_object_unref);
 
   /* Check resource limits. */
   if (added != NULL &&
@@ -617,7 +617,7 @@ mws_scheduler_update_entries (MwsScheduler  *self,
           g_assert (g_hash_table_remove (self->entries_data, entry_id));
 
           if (was_active)
-            g_ptr_array_add (actually_active_removed, g_object_ref (entry));
+            g_ptr_array_add (actually_removed_active, g_object_ref (entry));
           g_ptr_array_add (actually_removed, g_steal_pointer (&entry));
         }
       else
@@ -651,12 +651,12 @@ mws_scheduler_update_entries (MwsScheduler  *self,
         }
     }
 
-  if (actually_active_removed->len > 0)
+  if (actually_removed_active->len > 0)
     {
       g_debug ("%s: Emitting active-entries-changed with %u added, %u removed",
-               G_STRFUNC, (guint) 0, actually_active_removed->len);
+               G_STRFUNC, (guint) 0, actually_removed_active->len);
       g_signal_emit_by_name (G_OBJECT (self), "active-entries-changed",
-                             NULL, actually_active_removed);
+                             NULL, actually_removed_active);
     }
 
   if (actually_added->len > 0 || actually_removed->len > 0)
