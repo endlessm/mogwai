@@ -71,7 +71,7 @@ gchar           *mws_signal_logger_format_emissions (MwsSignalLogger            
       { \
         g_autofree gchar *ane_list = mws_signal_logger_format_emissions (self); \
         g_autofree gchar *ane_message = \
-            g_strdup_printf ("Expected no signal emissions, but saw %" G_GSIZE_FORMAT "\n:%s", \
+            g_strdup_printf ("Expected no signal emissions, but saw %" G_GSIZE_FORMAT ":\n%s", \
                              mws_signal_logger_get_n_emissions (self), \
                              ane_list); \
         g_assertion_message (G_LOG_DOMAIN, __FILE__, __LINE__, G_STRFUNC, \
