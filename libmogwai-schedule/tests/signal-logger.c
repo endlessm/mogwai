@@ -449,7 +449,7 @@ mws_signal_logger_format_emission (gpointer                       obj,
                                    const gchar                   *signal_name,
                                    const MwsSignalLoggerEmission *emission)
 {
-  g_return_val_if_fail (G_IS_OBJECT (obj), NULL);
+  g_return_val_if_fail (obj != NULL, NULL);  /* deliberately not a G_IS_OBJECT() check */
   g_return_val_if_fail (signal_name != NULL, NULL);
   g_return_val_if_fail (emission != NULL, NULL);
 
