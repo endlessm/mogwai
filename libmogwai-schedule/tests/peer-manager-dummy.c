@@ -228,9 +228,9 @@ mws_peer_manager_dummy_get_peer_credentials (MwsPeerManager *manager,
 MwsPeerManagerDummy *
 mws_peer_manager_dummy_new (gboolean fail)
 {
-  g_autoptr(MwsPeerManagerDummy) manager = g_object_new (MWS_TYPE_PEER_MANAGER_DUMMY, NULL);
-  manager->fail = fail;
-  return g_steal_pointer (&manager);
+  return g_object_new (MWS_TYPE_PEER_MANAGER_DUMMY,
+                       "fail", fail,
+                       NULL);
 }
 
 /**
