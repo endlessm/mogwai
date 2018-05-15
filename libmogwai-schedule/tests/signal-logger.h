@@ -137,4 +137,84 @@ gchar           *mws_signal_logger_format_emissions (MwsSignalLogger            
       } \
   } G_STMT_END
 
+/**
+ * mws_signal_logger_assert_notify_emission_pop:
+ * @self: a #MwsSignalLogger
+ * @obj: a #GObject instance to assert the emission matches
+ * @property_name: property name to assert the #GObject::notify signal matches
+ *
+ * Assert that a signal emission can be popped off the log (using
+ * mws_signal_logger_pop_emission()) and that it is an emission of
+ * #GObject::notify for @property_name on @obj. To examine the #GParamSpec for
+ * the notify emission, use mws_signal_logger_assert_emission_pop() instead.
+ *
+ * If a signal emission can’t be popped, or if it doesn’t match
+ * #GObject::notify, @property_name and @obj, an assertion fails, and some debug
+ * output is printed.
+ *
+ * Since: 0.1.0
+ */
+#define mws_signal_logger_assert_notify_emission_pop(self, obj, property_name) \
+  G_STMT_START { \
+    gpointer anep_obj = NULL; \
+    g_autofree gchar *anep_obj_type_name = NULL; \
+    g_autofree gchar *anep_signal_name = NULL; \
+    g_autoptr(MwsSignalLoggerEmission) anep_emission = NULL; \
+    if (mws_signal_logger_pop_emission (self, &anep_obj, &anep_obj_type_name, \
+                                        &anep_signal_name, \
+                                        &anep_emission)) \
+      { \
+        if (anep_obj == G_OBJECT (obj) && \
+            (g_str_equal (anep_signal_name, "notify") || \
+             g_str_equal (anep_signal_name, "notify::" property_name))) \
+          { \
+            /* FIXME: We should be able to use g_autoptr() here. \
+             * See: https://bugzilla.gnome.org/show_bug.cgi?id=796139 */ \
+            GParamSpec *anep_pspec = NULL; \
+            \
+            /* A GObject::notify signal was emitted. Is it for the right property? */ \
+            mws_signal_logger_emission_get_params (anep_emission, &anep_pspec); \
+            \
+            if (!g_str_equal (g_param_spec_get_name (anep_pspec), property_name)) \
+              { \
+                g_autofree gchar *anep_args = \
+                    mws_signal_logger_format_emission (anep_obj,\
+                                                       anep_obj_type_name,\
+                                                       anep_signal_name,\
+                                                       anep_emission); \
+                g_autofree gchar *anep_message = \
+                    g_strdup_printf ("Expected emission of %s::%s::%s from %p, but saw notify::%s instead: %s", \
+                                     G_OBJECT_TYPE_NAME (obj), "notify", property_name, obj, \
+                                     g_param_spec_get_name (anep_pspec), anep_args); \
+                g_assertion_message (G_LOG_DOMAIN, __FILE__, __LINE__, G_STRFUNC, \
+                                     anep_message); \
+              } \
+            \
+            g_param_spec_unref (anep_pspec); \
+          } \
+        else \
+          { \
+            g_autofree gchar *anep_args = \
+                mws_signal_logger_format_emission (anep_obj,\
+                                                   anep_obj_type_name,\
+                                                   anep_signal_name,\
+                                                   anep_emission); \
+            g_autofree gchar *anep_message = \
+                g_strdup_printf ("Expected emission of %s::%s::%s from %p, but saw: %s", \
+                                 G_OBJECT_TYPE_NAME (obj), "notify", property_name, obj, \
+                                 anep_args); \
+            g_assertion_message (G_LOG_DOMAIN, __FILE__, __LINE__, G_STRFUNC, \
+                                 anep_message); \
+          } \
+      } \
+    else \
+      { \
+        g_autofree gchar *assert_emission_pop_message = \
+            g_strdup_printf ("Expected emission of %s::%s::%s from %p, but saw no emissions", \
+                             G_OBJECT_TYPE_NAME (obj), "notify", property_name, obj); \
+        g_assertion_message (G_LOG_DOMAIN, __FILE__, __LINE__, G_STRFUNC, \
+                             assert_emission_pop_message); \
+      } \
+  } G_STMT_END
+
 G_END_DECLS
