@@ -85,6 +85,11 @@ bus_setup (BusFixture    *fixture,
   fixture->connection_monitor = MWS_CONNECTION_MONITOR (mws_connection_monitor_dummy_new ());
   fixture->peer_manager = MWS_PEER_MANAGER (mws_peer_manager_dummy_new (FALSE));
 
+  /* Set some credentials for the first peer so calls don’t fail by default. We
+   * can override this later by calling set_fail(). */
+  mws_peer_manager_dummy_set_peer_credentials (MWS_PEER_MANAGER_DUMMY (fixture->peer_manager),
+                                               ":1.1", "/some/peer/path");
+
   /* Construct the scheduler manually so we can set max-entries. */
   fixture->scheduler = g_object_new (MWS_TYPE_SCHEDULER,
                                      "connection-monitor", fixture->connection_monitor,
