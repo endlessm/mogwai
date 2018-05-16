@@ -33,4 +33,11 @@ G_DECLARE_FINAL_TYPE (MwsConnectionMonitorDummy, mws_connection_monitor_dummy, M
 
 MwsConnectionMonitorDummy *mws_connection_monitor_dummy_new (void);
 
+void mws_connection_monitor_dummy_update_connections (MwsConnectionMonitorDummy  *self,
+                                                      GHashTable                 *added,
+                                                      GPtrArray                  *removed);
+void mws_connection_monitor_dummy_update_connection  (MwsConnectionMonitorDummy  *self,
+                                                      const gchar                *connection_id,
+                                                      const MwsConnectionDetails *details);
+
 G_END_DECLS

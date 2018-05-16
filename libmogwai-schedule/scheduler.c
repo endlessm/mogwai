@@ -866,7 +866,7 @@ entry_compare_cb (gconstpointer a_,
       g_debug ("%s: Comparing schedule entries ‘%s’ and ‘%s’ by peer priority: %d vs %d",
                G_STRFUNC, mws_schedule_entry_get_id (a),
                mws_schedule_entry_get_id (b), a_peer_priority, b_peer_priority);
-      return b_peer_priority - a_peer_priority;
+      return (b_peer_priority > a_peer_priority) ? 1 : -1;
     }
 
   /* Within the peer, sort by the priority assigned by that peer to the entry. */
@@ -879,7 +879,7 @@ entry_compare_cb (gconstpointer a_,
                G_STRFUNC, mws_schedule_entry_get_id (a),
                mws_schedule_entry_get_id (b), a_entry_priority,
                b_entry_priority);
-      return b_entry_priority - a_entry_priority;
+      return (b_entry_priority > a_entry_priority) ? 1 : -1;
     }
 
   /* Arbitrarily break ties using the entries’ IDs, which should always be

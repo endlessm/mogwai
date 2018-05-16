@@ -33,8 +33,16 @@ G_DECLARE_FINAL_TYPE (MwsPeerManagerDummy, mws_peer_manager_dummy, MWS, PEER_MAN
 
 MwsPeerManagerDummy *mws_peer_manager_dummy_new      (gboolean             fail);
 
+/* Mock control methods. */
 gboolean             mws_peer_manager_dummy_get_fail (MwsPeerManagerDummy *self);
 void                 mws_peer_manager_dummy_set_fail (MwsPeerManagerDummy *self,
                                                       gboolean             fail);
+
+void                 mws_peer_manager_dummy_set_peer_credentials (MwsPeerManagerDummy *self,
+                                                                  const gchar         *sender,
+                                                                  const gchar         *path);
+
+void                 mws_peer_manager_dummy_remove_peer (MwsPeerManagerDummy *self,
+                                                         const gchar         *name);
 
 G_END_DECLS

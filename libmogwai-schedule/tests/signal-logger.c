@@ -51,14 +51,14 @@ struct _MwsSignalLogger
  * @logger: the #MwsSignalLogger this belongs to
  * @obj: pointer to the object instance this closure is connected to; no ref is
  *    held, and the object may be finalised before the closure, so this should
- *    only be used as an opaque pointer; use @obj_ref to access the #GObject
+ *    only be used as an opaque pointer; add a #GWeakRef if the object needs to
+ *    be accessed in future
  * @obj_type_name: a copy of `G_OBJECT_TYPE_NAME (obj)` for use when @obj may
  *    be invalid
  * @signal_name: name of the signal this closure is connected to, including
  *    detail (if applicable)
  * @signal_id: ID of the signal connection, or 0 if this closure has been
  *    disconnected
- * @obj_ref: weak pointer to @obj
  *
  * A closure representing a connection from @logger to the given @signal_name
  * on @obj.
@@ -76,7 +76,6 @@ typedef struct
   gchar *obj_type_name;  /* (owned) */
   gchar *signal_name;  /* (owned) */
   gulong signal_id;  /* 0 when disconnected */
-  GWeakRef obj_ref;  /* (owned) */
 } MwsLoggedClosure;
 
 /**
@@ -190,13 +189,7 @@ mws_logged_closure_invalidate (gpointer  user_data,
 {
   MwsLoggedClosure *self = (MwsLoggedClosure *) closure;
 
-  g_autoptr(GObject) obj_ref = g_weak_ref_get (&self->obj_ref);
-
-  if (self->signal_id != 0 && obj_ref != NULL)
-    g_signal_handler_disconnect (obj_ref, self->signal_id);
-
   self->signal_id = 0;
-  g_weak_ref_set (&self->obj_ref, NULL);
 }
 
 static void
@@ -213,7 +206,6 @@ mws_logged_closure_finalize (gpointer  user_data,
 
   g_free (self->obj_type_name);
   g_free (self->signal_name);
-  g_weak_ref_clear (&self->obj_ref);
 
   g_assert (self->signal_id == 0);
 }
@@ -247,7 +239,6 @@ mws_logged_closure_new (MwsSignalLogger *logger,
   self->obj_type_name = g_strdup (G_OBJECT_TYPE_NAME (obj));
   self->signal_name = g_strdup (signal_name);
   self->signal_id = 0;
-  g_weak_ref_init (&self->obj_ref, obj);
 
   g_closure_add_invalidate_notifier (closure, NULL, (GClosureNotify) mws_logged_closure_invalidate);
   g_closure_add_finalize_notifier (closure, NULL, (GClosureNotify) mws_logged_closure_finalize);
@@ -320,7 +311,8 @@ mws_signal_logger_free (MwsSignalLogger *self)
  * #MwsSignalLogger to the given @signal_name on @obj so that emissions of it
  * will be logged.
  *
- * The closure will be disconnected when:
+ * The closure will be disconnected (and the returned signal connection ID
+ * invalidated) when:
  *
  *   * @obj is finalised
  *   * The closure is freed or removed
@@ -457,7 +449,7 @@ mws_signal_logger_format_emission (gpointer                       obj,
                                    const gchar                   *signal_name,
                                    const MwsSignalLoggerEmission *emission)
 {
-  g_return_val_if_fail (G_IS_OBJECT (obj), NULL);
+  g_return_val_if_fail (obj != NULL, NULL);  /* deliberately not a G_IS_OBJECT() check */
   g_return_val_if_fail (signal_name != NULL, NULL);
   g_return_val_if_fail (emission != NULL, NULL);
 

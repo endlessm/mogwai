@@ -19,6 +19,10 @@ test_programs = [
     'signal-logger.c',
     'signal-logger.h',
   ], deps],
+  ['schedule-entry', [
+    'signal-logger.c',
+    'signal-logger.h',
+  ], deps],
   ['schedule-service', [
     'connection-monitor-dummy.c',
     'connection-monitor-dummy.h',

@@ -288,6 +288,8 @@ mws_schedule_entry_new (const gchar *owner)
  *  * `resumable` (`b`): sets #MwsScheduleEntry:resumable
  *  * `priority` (`u`): sets #MwsScheduleEntry:priority
  *
+ * If @parameters is floating, it will be consumed.
+ *
  * Returns: (transfer full): a new #MwsScheduleEntry
  * Since: 0.1.0
  */
@@ -301,6 +303,7 @@ mws_schedule_entry_new_from_variant (const gchar  *owner,
                         g_variant_is_of_type (parameters, G_VARIANT_TYPE_VARDICT), NULL);
   g_return_val_if_fail (error == NULL || *error == NULL, NULL);
 
+  g_autoptr(GVariant) parameters_sunk = (parameters != NULL) ? g_variant_ref_sink (parameters) : NULL;
   gsize n_parameters = (parameters != NULL) ? g_variant_n_children (parameters) : 0;
 
   g_autoptr(GPtrArray) names = NULL;
