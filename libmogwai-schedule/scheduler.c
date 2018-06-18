@@ -85,6 +85,8 @@ static void connection_monitor_connection_details_changed_cb (MwsConnectionMonit
 static void peer_manager_peer_vanished_cb                    (MwsPeerManager       *manager,
                                                               const gchar          *name,
                                                               gpointer              user_data);
+static void clock_offset_changed_cb                          (MwsClock             *clock,
+                                                              gpointer              user_data);
 
 /**
  * MwsScheduler:
@@ -363,6 +365,11 @@ mws_scheduler_constructed (GObject *object)
   g_signal_connect (self->peer_manager, "peer-vanished",
                     (GCallback) peer_manager_peer_vanished_cb, self);
 
+  /* Connect to signals from the clock, which will trigger rescheduling when
+   * the clock offset changes. */
+  g_signal_connect (self->clock, "offset-changed",
+                    (GCallback) clock_offset_changed_cb, self);
+
   /* Initialise self->cached_allow_downloads. */
   mws_scheduler_reschedule (self);
 }
@@ -400,6 +407,13 @@ mws_scheduler_dispose (GObject *object)
     {
       mws_clock_remove_alarm (self->clock, self->reschedule_alarm_id);
       self->reschedule_alarm_id = 0;
+    }
+
+  if (self->clock != NULL)
+    {
+      g_signal_handlers_disconnect_by_func (self->clock,
+                                            clock_offset_changed_cb,
+                                            self);
     }
 
   g_clear_object (&self->clock);
@@ -528,6 +542,19 @@ peer_manager_peer_vanished_cb (MwsPeerManager *manager,
       g_debug ("Failed to remove schedule entries for owner ‘%s’: %s",
                name, local_error->message);
     }
+}
+
+static void
+clock_offset_changed_cb (MwsClock *clock,
+                         gpointer  user_data)
+{
+  MwsScheduler *self = MWS_SCHEDULER (user_data);
+
+  g_autoptr(GDateTime) now = mws_clock_get_now_local (clock);
+  g_autofree gchar *now_str = g_date_time_format (now, "%FT%T%:::z");
+
+  g_debug ("%s: Clock offset changed; time is now %s", G_STRFUNC, now_str);
+  mws_scheduler_reschedule (self);
 }
 
 /**
