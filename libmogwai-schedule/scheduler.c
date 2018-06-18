@@ -123,6 +123,9 @@ struct _MwsScheduler
 
   /* Cache of some of the connection data used by our properties. */
   gboolean cached_allow_downloads;
+
+  /* Sanity check that we don’t reschedule re-entrantly. */
+  gboolean in_reschedule;
 };
 
 /* Arbitrarily chosen. */
@@ -417,6 +420,8 @@ mws_scheduler_dispose (GObject *object)
     }
 
   g_clear_object (&self->clock);
+
+  g_assert (!self->in_reschedule);
 
   /* Chain up to the parent class */
   G_OBJECT_CLASS (mws_scheduler_parent_class)->dispose (object);
@@ -967,6 +972,9 @@ mws_scheduler_reschedule (MwsScheduler *self)
 {
   g_return_if_fail (MWS_IS_SCHEDULER (self));
 
+  g_assert (!self->in_reschedule);
+  self->in_reschedule = TRUE;
+
   g_debug ("%s: Rescheduling %u entries",
            G_STRFUNC, g_hash_table_size (self->entries));
 
@@ -1026,7 +1034,10 @@ mws_scheduler_reschedule (MwsScheduler *self)
   /* Fast path. We still have to load the connection monitor information above,
    * though, so that we can update self->cached_allow_downloads. */
   if (g_hash_table_size (self->entries) == 0)
-    return;
+    {
+      self->in_reschedule = FALSE;
+      return;
+    }
 
   /* As we iterate over all the entries, see when the earliest time we next need
    * to reschedule is. */
@@ -1248,6 +1259,8 @@ mws_scheduler_reschedule (MwsScheduler *self)
     {
       g_debug ("%s: Setting next reschedule to never", G_STRFUNC);
     }
+
+  self->in_reschedule = FALSE;
 }
 
 /**
