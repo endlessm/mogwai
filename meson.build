@@ -1,6 +1,6 @@
 project('mogwai','c',
   version: '0.1.0',
-  meson_version: '>= 0.40.0',
+  meson_version: '>= 0.43.0',
   license: 'LGPLv2.1+',
   default_options: [
     'c_std=gnu11',
@@ -28,7 +28,7 @@ configure_file(
 root_inc = include_directories('.')
 
 # Enable warning flags
-test_args = [
+test_c_args = [
   '-fno-strict-aliasing',
   '-fstack-protector-strong',
   '-Waggregate-return',
@@ -88,11 +88,7 @@ test_args = [
   '-Wwrite-strings'
 ]
 cc = meson.get_compiler('c')
-foreach arg: test_args
-  if cc.has_argument(arg)
-    add_project_arguments(arg, language : 'c')
-  endif
-endforeach
+add_project_arguments(cc.get_supported_arguments(test_c_args), language: 'c')
 
 enable_installed_tests = get_option('installed_tests')
 test_template = files('template.test.in')
