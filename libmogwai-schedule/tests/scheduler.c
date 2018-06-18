@@ -158,6 +158,16 @@ assert_entries_changed_signals (Fixture   *fixture,
                                 GPtrArray *expected_changed_active_added,
                                 GPtrArray *expected_changed_active_removed)
 {
+  /* Squash empty arrays. */
+  if (expected_changed_added != NULL && expected_changed_added->len == 0)
+    expected_changed_added = NULL;
+  if (expected_changed_removed != NULL && expected_changed_removed->len == 0)
+    expected_changed_removed = NULL;
+  if (expected_changed_active_added != NULL && expected_changed_active_added->len == 0)
+    expected_changed_active_added = NULL;
+  if (expected_changed_active_removed != NULL && expected_changed_active_removed->len == 0)
+    expected_changed_active_removed = NULL;
+
   g_autoptr(GPtrArray) changed_added = NULL;
   g_autoptr(GPtrArray) changed_removed = NULL;
   g_autoptr(GPtrArray) changed_active_added1 = NULL;
@@ -169,12 +179,11 @@ assert_entries_changed_signals (Fixture   *fixture,
    * entries (if there are any); then notify::entries and entries-changed; then
    * active-entries-changed *again* for added active entries (if there are
    * any). */
-  if (expected_changed_active_removed != NULL && expected_changed_active_removed->len > 0)
+  if (expected_changed_active_removed != NULL)
     mws_signal_logger_assert_emission_pop (fixture->scheduler_signals,
                                            fixture->scheduler, "active-entries-changed",
                                            &changed_active_added1, &changed_active_removed1);
-  if ((expected_changed_added != NULL && expected_changed_added->len > 0) ||
-      (expected_changed_removed != NULL && expected_changed_removed->len > 0))
+  if (expected_changed_added != NULL || expected_changed_removed != NULL)
     {
       mws_signal_logger_assert_emission_pop (fixture->scheduler_signals,
                                              fixture->scheduler, "notify::entries",
@@ -183,7 +192,7 @@ assert_entries_changed_signals (Fixture   *fixture,
                                              fixture->scheduler, "entries-changed",
                                              &changed_added, &changed_removed);
     }
-  if (expected_changed_active_added != NULL && expected_changed_active_added->len > 0)
+  if (expected_changed_active_added != NULL)
     mws_signal_logger_assert_emission_pop (fixture->scheduler_signals,
                                            fixture->scheduler, "active-entries-changed",
                                            &changed_active_added2, &changed_active_removed2);
