@@ -47,17 +47,30 @@ typedef struct
   MwsSignalLogger *scheduler_signals;  /* (owned) */
 } Fixture;
 
+typedef struct
+{
+  guint max_active_entries;  /* > 1 */
+} TestData;
+
 static void
 setup (Fixture       *fixture,
        gconstpointer  test_data)
 {
+  const TestData *data = test_data;
+
+  g_assert (data->max_active_entries > 0);
+
   fixture->connection_monitor = MWS_CONNECTION_MONITOR (mws_connection_monitor_dummy_new ());
   fixture->peer_manager = MWS_PEER_MANAGER (mws_peer_manager_dummy_new (FALSE));
   fixture->clock = MWS_CLOCK (mws_clock_dummy_new ());
 
-  fixture->scheduler = mws_scheduler_new (fixture->connection_monitor,
-                                          fixture->peer_manager,
-                                          fixture->clock);
+  /* Construct the scheduler manually so we can set max-active-entries. */
+  fixture->scheduler = g_object_new (MWS_TYPE_SCHEDULER,
+                                     "connection-monitor", fixture->connection_monitor,
+                                     "peer-manager", fixture->peer_manager,
+                                     "clock", fixture->clock,
+                                     "max-active-entries", data->max_active_entries,
+                                     NULL);
   fixture->scheduler_signals = mws_signal_logger_new ();
   mws_signal_logger_connect (fixture->scheduler_signals,
                              fixture->scheduler, "notify::allow-downloads");
@@ -797,20 +810,30 @@ main (int    argc,
   setlocale (LC_ALL, "");
   g_test_init (&argc, &argv, NULL);
 
+  const TestData standard_data =
+    {
+      .max_active_entries = 1,
+    };
+
   g_test_add_func ("/scheduler/construction", test_scheduler_construction);
-  g_test_add ("/scheduler/entries", Fixture, NULL, setup,
+  g_test_add ("/scheduler/entries", Fixture, &standard_data, setup,
               test_scheduler_entries, teardown);
-  g_test_add ("/scheduler/entries/remove-for-owner", Fixture, NULL, setup,
+  g_test_add ("/scheduler/entries/remove-for-owner", Fixture,
+              &standard_data, setup,
               test_scheduler_entries_remove_for_owner, teardown);
-  g_test_add ("/scheduler/properties", Fixture, NULL, setup,
+  g_test_add ("/scheduler/properties", Fixture, &standard_data, setup,
               test_scheduler_properties, teardown);
-  g_test_add ("/scheduler/scheduling/entry-priorities", Fixture, NULL, setup,
+  g_test_add ("/scheduler/scheduling/entry-priorities", Fixture,
+              &standard_data, setup,
               test_scheduler_scheduling_entry_priorities, teardown);
-  g_test_add ("/scheduler/scheduling/peer-priorities", Fixture, NULL, setup,
+  g_test_add ("/scheduler/scheduling/peer-priorities", Fixture,
+              &standard_data, setup,
               test_scheduler_scheduling_peer_priorities, teardown);
-  g_test_add ("/scheduler/scheduling/peer-vanished", Fixture, NULL, setup,
+  g_test_add ("/scheduler/scheduling/peer-vanished", Fixture,
+              &standard_data, setup,
               test_scheduler_scheduling_peer_vanished, teardown);
-  g_test_add ("/scheduler/scheduling/metered-connection", Fixture, NULL, setup,
+  g_test_add ("/scheduler/scheduling/metered-connection", Fixture,
+              &standard_data, setup,
               test_scheduler_scheduling_metered_connection, teardown);
 
   return g_test_run ();
