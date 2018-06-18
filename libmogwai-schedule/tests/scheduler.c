@@ -909,6 +909,354 @@ test_scheduler_scheduling_metered_connection (Fixture       *fixture,
     }
 }
 
+/* Test the transitions between different tariffs, checking whether they cause a
+ * single entry to be scheduled/unscheduled appropriately. Each test vector
+ * provides two states of a set of tariffs, and two times. Either the set of
+ * tariffs can vary, or the time can vary in a single vector — not both. The
+ * test starts in state 1 at time 1, checks whether the entry is scheduled
+ * appropriately, transitions to state 2 at time 2, checks again, and then
+ * transitions back to state 1 at time 1 to test the reverse transition (and
+ * checks again). */
+static void
+test_scheduler_scheduling_tariff (Fixture       *fixture,
+                                  gconstpointer  test_data)
+{
+  /* A tariff which is normally unmetered, but has a period from 01:00–02:00
+   * each day which has zero capacity limit. */
+  g_autoptr(GPtrArray) tariff1_periods = g_ptr_array_new_with_free_func (NULL);
+
+  g_autoptr(GDateTime) tariff1_period1_start = g_date_time_new_utc (2018, 1, 1, 0, 0, 0);
+  g_autoptr(GDateTime) tariff1_period1_end = g_date_time_new_utc (2018, 1, 2, 0, 0, 0);
+  g_autoptr(MwtPeriod) tariff1_period1 = mwt_period_new (tariff1_period1_start,
+                                                         tariff1_period1_end,
+                                                         MWT_PERIOD_REPEAT_DAY,
+                                                         1,
+                                                         "capacity-limit", G_MAXUINT64,
+                                                         NULL);
+  g_ptr_array_add (tariff1_periods, tariff1_period1);
+
+  g_autoptr(GDateTime) tariff1_period2_start = g_date_time_new_utc (2018, 1, 1, 1, 0, 0);
+  g_autoptr(GDateTime) tariff1_period2_end = g_date_time_new_utc (2018, 1, 1, 2, 0, 0);
+  g_autoptr(MwtPeriod) tariff1_period2 = mwt_period_new (tariff1_period2_start,
+                                                         tariff1_period2_end,
+                                                         MWT_PERIOD_REPEAT_DAY,
+                                                         1,
+                                                         "capacity-limit", 0,
+                                                         NULL);
+  g_ptr_array_add (tariff1_periods, tariff1_period2);
+
+  g_autoptr(MwtTariff) tariff1 = mwt_tariff_new ("tariff1", tariff1_periods);
+
+  /* A tariff which is always unmetered (infinite capacity limit). */
+  g_autoptr(GPtrArray) tariff_unmetered_periods = g_ptr_array_new_with_free_func (NULL);
+
+  g_autoptr(GDateTime) tariff_unmetered_period1_start = g_date_time_new_utc (2018, 1, 1, 0, 0, 0);
+  g_autoptr(GDateTime) tariff_unmetered_period1_end = g_date_time_new_utc (2018, 1, 2, 0, 0, 0);
+  g_autoptr(MwtPeriod) tariff_unmetered_period1 = mwt_period_new (tariff_unmetered_period1_start,
+                                                                  tariff_unmetered_period1_end,
+                                                                  MWT_PERIOD_REPEAT_DAY,
+                                                                  1,
+                                                                  "capacity-limit", G_MAXUINT64,
+                                                                  NULL);
+  g_ptr_array_add (tariff_unmetered_periods, tariff_unmetered_period1);
+
+  g_autoptr(MwtTariff) tariff_unmetered = mwt_tariff_new ("tariff_unmetered",
+                                                          tariff_unmetered_periods);
+
+  /* A tariff which is normally metered, but has a period from 01:30–02:00
+   * each day which has unlimited capacity. */
+  g_autoptr(GPtrArray) tariff2_periods = g_ptr_array_new_with_free_func (NULL);
+
+  g_autoptr(GDateTime) tariff2_period1_start = g_date_time_new_utc (2018, 1, 1, 0, 0, 0);
+  g_autoptr(GDateTime) tariff2_period1_end = g_date_time_new_utc (2018, 1, 2, 0, 0, 0);
+  g_autoptr(MwtPeriod) tariff2_period1 = mwt_period_new (tariff2_period1_start,
+                                                         tariff2_period1_end,
+                                                         MWT_PERIOD_REPEAT_DAY,
+                                                         1,
+                                                         "capacity-limit", 0,
+                                                         NULL);
+  g_ptr_array_add (tariff2_periods, tariff2_period1);
+
+  g_autoptr(GDateTime) tariff2_period2_start = g_date_time_new_utc (2018, 1, 1, 1, 30, 0);
+  g_autoptr(GDateTime) tariff2_period2_end = g_date_time_new_utc (2018, 1, 1, 2, 30, 0);
+  g_autoptr(MwtPeriod) tariff2_period2 = mwt_period_new (tariff2_period2_start,
+                                                         tariff2_period2_end,
+                                                         MWT_PERIOD_REPEAT_DAY,
+                                                         1,
+                                                         "capacity-limit", G_MAXUINT64,
+                                                         NULL);
+  g_ptr_array_add (tariff2_periods, tariff2_period2);
+
+  g_autoptr(MwtTariff) tariff2 = mwt_tariff_new ("tariff2", tariff2_periods);
+
+  /* A tariff has a single period and no recurrence. */
+  g_autoptr(GPtrArray) tariff3_periods = g_ptr_array_new_with_free_func (NULL);
+
+  g_autoptr(GDateTime) tariff3_period1_start = g_date_time_new_utc (2018, 1, 1, 0, 0, 0);
+  g_autoptr(GDateTime) tariff3_period1_end = g_date_time_new_utc (2018, 1, 2, 0, 0, 0);
+  g_autoptr(MwtPeriod) tariff3_period1 = mwt_period_new (tariff3_period1_start,
+                                                         tariff3_period1_end,
+                                                         MWT_PERIOD_REPEAT_NONE,
+                                                         0,
+                                                         "capacity-limit", 0,
+                                                         NULL);
+  g_ptr_array_add (tariff3_periods, tariff3_period1);
+
+  g_autoptr(MwtTariff) tariff3 = mwt_tariff_new ("tariff3", tariff3_periods);
+
+  g_autoptr(GError) local_error = NULL;
+  struct
+    {
+      /* We use a fixed limit of 3 tariffs in these tests, because we should
+       * be able to simulate any condition we care about using 3. Typically,
+       * systems will have only 1 active connection (maybe 2 if they have wired
+       * and Wi-Fi enabled at the same time). Each tariff listed here will
+       * result in a separate network connection being configured.
+       *
+       * The dates/times below are given in UTC, and then converted to the
+       * timezone given as @state1_tz or @state2_tz. This means they represent
+       * the same instant as the UTC time, and hence @state1_expected_active
+       * and @state2_expected_active are independent of @state1_tz and
+       * @state2_tz. */
+      const MwtTariff *state1_tariffs[3];
+      gint state1_year;
+      gint state1_month;
+      gint state1_day;
+      gint state1_hour;
+      gint state1_minute;
+      gdouble state1_seconds;
+      const gchar *state1_tz;
+      gboolean state1_expected_active;
+      const MwtTariff *state2_tariffs[3];
+      gint state2_year;
+      gint state2_month;
+      gint state2_day;
+      gint state2_hour;
+      gint state2_minute;
+      gdouble state2_seconds;
+      const gchar *state2_tz;
+      gboolean state2_expected_active;
+    }
+  transitions[] =
+    {
+      /* Transition from an unmetered period to a metered period in the same
+       * tariff. */
+      { { tariff1, }, 2018, 2, 3, 17, 0, 0, NULL, TRUE,
+        { tariff1, }, 2018, 2, 4, 1, 30, 0, NULL, FALSE },
+      /* Transition within an unmetered period, and within a metered period. */
+      { { tariff1, }, 2018, 2, 3, 17, 0, 0, NULL, TRUE,
+        { tariff1, }, 2018, 2, 3, 17, 30, 0, NULL, TRUE },
+      { { tariff1, }, 2018, 2, 4, 1, 15, 0, NULL, FALSE,
+        { tariff1, }, 2018, 2, 4, 1, 30, 0, NULL, FALSE },
+      /* Transition between an unmetered tariff and a normal tariff, for a time
+       * which is and is not in the tariff metered period. */
+      { { tariff_unmetered, }, 2018, 2, 3, 17, 0, 0, NULL, TRUE,
+        { tariff1, }, 2018, 2, 3, 17, 0, 0, NULL, TRUE },
+      { { tariff_unmetered, }, 2018, 2, 4, 1, 30, 0, NULL, TRUE,
+        { tariff1, }, 2018, 2, 4, 1, 30, 0, NULL, FALSE },
+      /* Transition from an unmetered period and a metered period in one
+       * tariff, to a metered period in one and an unmetered period in another.
+       * Since the scheduler requires *all* connections to be safe in order to
+       * start a download, this leads to very limited active downloads. */
+      { { tariff1, tariff2, }, 2018, 2, 4, 0, 30, 0, NULL, FALSE,
+        { tariff1, tariff2, }, 2018, 2, 4, 1, 15, 0, NULL, FALSE },
+      { { tariff1, tariff2, }, 2018, 2, 4, 1, 45, 0, NULL, FALSE,
+        { tariff1, tariff2, }, 2018, 2, 4, 1, 59, 0, NULL, FALSE },
+      { { tariff1, tariff2, }, 2018, 2, 4, 2, 0, 0, NULL, TRUE,
+        { tariff1, tariff2, }, 2018, 2, 4, 2, 15, 0, NULL, TRUE },
+      /* Timezone change in metered and unmetered periods. The underlying UTC
+       * time may change at the same time, to either give a timezone change only
+       * (where the underlying UTC time is the same) or a timezone and time
+       * change such that the resolved wall clock time stays the same */
+      /* Change timezone only: */
+      { { tariff1, }, 2018, 2, 3, 15, 30, 0, "Europe/London" /* UTC+0 */, TRUE,
+        { tariff1, }, 2018, 2, 3, 15, 30, 0, "Australia/Brisbane" /* UTC+10 */, TRUE },
+      /* Keep wall clock time unchanged: */
+      { { tariff1, }, 2018, 2, 3, 1, 30, 0, "Australia/Brisbane" /* UTC+10 */, FALSE,
+        { tariff1, }, 2018, 2, 3, 11, 30, 0, "Europe/London" /* UTC+0 */, TRUE },
+
+      { { tariff1, }, 2018, 2, 3, 16, 30, 0, "Europe/London" /* UTC+0 */, TRUE,
+        { tariff1, }, 2018, 2, 3, 16, 30, 0, "Europe/Berlin" /* UTC+1 */, TRUE },
+      { { tariff1, }, 2018, 2, 3, 15, 30, 0, "Europe/Berlin" /* UTC+1 */, TRUE,
+        { tariff1, }, 2018, 2, 3, 16, 30, 0, "Europe/London" /* UTC+0 */, TRUE },
+
+      { { tariff1, }, 2018, 2, 3, 1, 30, 0, "Europe/London" /* UTC+0 */, FALSE,
+        { tariff1, }, 2018, 2, 3, 1, 30, 0, "Australia/Brisbane" /* UTC+10 */, FALSE },
+      { { tariff1, }, 2018, 2, 2, 15, 30, 0, "Australia/Brisbane" /* UTC+10 */, TRUE,
+        { tariff1, }, 2018, 2, 3, 1, 30, 0, "Europe/London" /* UTC+0 */, FALSE },
+
+      { { tariff1, }, 2018, 2, 3, 1, 30, 0, "Europe/London", FALSE,
+        { tariff1, }, 2018, 2, 3, 1, 30, 0, "Europe/Isle_of_Man", FALSE },
+      /* Test different times in (and out of) a tariff which doesn’t repeat. */
+      { { tariff3, }, 2017, 12, 30, 0, 0, 0, NULL, TRUE,
+        { tariff3, }, 2018, 1, 1, 1, 30, 0, NULL, FALSE },
+      { { tariff3, }, 2018, 1, 1, 0, 0, 0, NULL, FALSE,
+        { tariff3, }, 2018, 1, 2, 0, 0, 0, NULL, TRUE },
+    };
+
+  for (gsize i = 0; i < G_N_ELEMENTS (transitions); i++)
+    {
+      /* Set up the dates/times. The date/time figures in the test vector are
+       * given in UTC and converted to the stated timezone, so they represent
+       * the same instant as the UTC time, but with a likely different wall
+       * clock time. */
+      g_autoptr(GTimeZone) state1_tz =
+          (transitions[i].state1_tz != NULL) ? g_time_zone_new (transitions[i].state1_tz) :
+                                               g_time_zone_new_utc ();
+      g_autoptr(GDateTime) state1_time_utc = g_date_time_new_utc (transitions[i].state1_year,
+                                                                  transitions[i].state1_month,
+                                                                  transitions[i].state1_day,
+                                                                  transitions[i].state1_hour,
+                                                                  transitions[i].state1_minute,
+                                                                  transitions[i].state1_seconds);
+      g_autoptr(GDateTime) state1_time = g_date_time_to_timezone (state1_time_utc,
+                                                                  state1_tz);
+
+      g_autoptr(GTimeZone) state2_tz =
+          (transitions[i].state2_tz != NULL) ? g_time_zone_new (transitions[i].state2_tz) :
+                                               g_time_zone_new_utc ();
+      g_autoptr(GDateTime) state2_time_utc = g_date_time_new_utc (transitions[i].state2_year,
+                                                                  transitions[i].state2_month,
+                                                                  transitions[i].state2_day,
+                                                                  transitions[i].state2_hour,
+                                                                  transitions[i].state2_minute,
+                                                                  transitions[i].state2_seconds);
+      g_autoptr(GDateTime) state2_time = g_date_time_to_timezone (state2_time_utc,
+                                                                  state2_tz);
+
+      /* We only care about transitions within a given connection in this test,
+       * so the set of connections available in states 1 and 2 must be the same */
+      for (gsize j = 0; j < G_N_ELEMENTS (transitions[i].state1_tariffs); j++)
+        g_assert ((transitions[i].state1_tariffs[j] == NULL) ==
+                  (transitions[i].state2_tariffs[j] == NULL));
+      /* Similarly, we can vary either the wall clock time, or the connection
+       * tariff, between states 1 and 2 — but varying both would give too many
+       * axes of freedom in the test. Ensure only one varies. */
+      gboolean all_tariffs_equal = TRUE;
+      for (gsize j = 0; j < G_N_ELEMENTS (transitions[i].state1_tariffs); j++)
+        all_tariffs_equal =
+            all_tariffs_equal &&
+            transitions[i].state1_tariffs[j] == transitions[i].state2_tariffs[j];
+      g_assert (all_tariffs_equal ||
+                g_date_time_equal (state1_time, state2_time));
+      /* We want a monotonic wall clock. */
+      g_assert_cmpint (g_date_time_compare (state1_time, state2_time), <=, 0);
+
+      g_test_message ("Transition test %" G_GSIZE_FORMAT " of %" G_GSIZE_FORMAT,
+                      i + 1, G_N_ELEMENTS (transitions));
+
+      /* Set the time in state 1. */
+      mws_clock_dummy_set_time_zone (MWS_CLOCK_DUMMY (fixture->clock), state1_tz);
+      mws_clock_dummy_set_time (MWS_CLOCK_DUMMY (fixture->clock), state1_time);
+
+      /* Set up the connections in state 1. */
+      g_autoptr(GHashTable) state1_connections =
+          g_hash_table_new_full (g_str_hash, g_str_equal, g_free, g_free);
+
+      for (gsize j = 0; j < G_N_ELEMENTS (transitions[i].state1_tariffs); j++)
+        {
+          if (transitions[i].state1_tariffs[j] != NULL)
+            {
+              g_autofree gchar *id = g_strdup_printf ("connection%" G_GSIZE_FORMAT, j);
+
+              g_autofree MwsConnectionDetails *connection = g_new0 (MwsConnectionDetails, 1);
+              connection->metered = MWS_METERED_NO;
+              connection->allow_downloads_when_metered = FALSE;
+              connection->allow_downloads = TRUE;
+              connection->tariff = transitions[i].state1_tariffs[j];
+
+              g_hash_table_insert (state1_connections, g_steal_pointer (&id),
+                                   g_steal_pointer (&connection));
+            }
+        }
+
+      mws_connection_monitor_dummy_update_connections (MWS_CONNECTION_MONITOR_DUMMY (fixture->connection_monitor),
+                                                       state1_connections, NULL);
+
+      /* Due to the test setup, we always expect allow-downloads=true. */
+      mws_signal_logger_assert_emission_pop (fixture->scheduler_signals,
+                                             fixture->scheduler,
+                                             "notify::allow-downloads", NULL);
+      mws_signal_logger_assert_no_emissions (fixture->scheduler_signals);
+
+      /* Add a single entry to the scheduler. */
+      g_autoptr(MwsScheduleEntry) entry = mws_schedule_entry_new (":owner.1");
+
+      g_autoptr(GPtrArray) entry_array = g_ptr_array_new_with_free_func (NULL);
+      g_ptr_array_add (entry_array, entry);
+
+      mws_scheduler_update_entries (fixture->scheduler, entry_array, NULL, &local_error);
+      g_assert_no_error (local_error);
+      assert_entries_changed_signals (fixture, entry_array, NULL,
+                                      (transitions[i].state1_expected_active ? entry_array : NULL),
+                                      NULL, NULL);
+
+      /* Change to the next time. */
+      mws_clock_dummy_set_time_zone (MWS_CLOCK_DUMMY (fixture->clock), state2_tz);
+      mws_clock_dummy_set_time (MWS_CLOCK_DUMMY (fixture->clock), state2_time);
+
+      /* Change to the next connection state. */
+      for (gsize j = 0; j < G_N_ELEMENTS (transitions[i].state2_tariffs); j++)
+        {
+          if (transitions[i].state2_tariffs[j] != NULL)
+            {
+              g_autofree gchar *id = g_strdup_printf ("connection%" G_GSIZE_FORMAT, j);
+
+              g_autofree MwsConnectionDetails *connection = g_new0 (MwsConnectionDetails, 1);
+              connection->metered = MWS_METERED_NO;
+              connection->allow_downloads_when_metered = FALSE;
+              connection->allow_downloads = TRUE;
+              connection->tariff = transitions[i].state2_tariffs[j];
+
+              mws_connection_monitor_dummy_update_connection (MWS_CONNECTION_MONITOR_DUMMY (fixture->connection_monitor),
+                                                              id, connection);
+            }
+        }
+
+      if (transitions[i].state1_expected_active == transitions[i].state2_expected_active)
+        mws_signal_logger_assert_no_emissions (fixture->scheduler_signals);
+      else if (transitions[i].state1_expected_active)
+        assert_entries_changed_signals (fixture, NULL, NULL, NULL, entry_array, NULL);
+      else
+        assert_entries_changed_signals (fixture, NULL, NULL, entry_array, NULL, NULL);
+
+      /* Change back to the previous time. This might not be very realistic,
+       * but the scheduler should deal with it. */
+      mws_clock_dummy_set_time_zone (MWS_CLOCK_DUMMY (fixture->clock), state1_tz);
+      mws_clock_dummy_set_time (MWS_CLOCK_DUMMY (fixture->clock), state1_time);
+
+      /* Change back to the previous connection state. The entry’s scheduled
+       * state should always be the same as before. */
+      for (gsize j = 0; j < G_N_ELEMENTS (transitions[i].state1_tariffs); j++)
+        {
+          if (transitions[i].state1_tariffs[j] != NULL)
+            {
+              g_autofree gchar *id = g_strdup_printf ("connection%" G_GSIZE_FORMAT, j);
+
+              g_autofree MwsConnectionDetails *connection = g_new0 (MwsConnectionDetails, 1);
+              connection->metered = MWS_METERED_NO;
+              connection->allow_downloads_when_metered = FALSE;
+              connection->allow_downloads = TRUE;
+              connection->tariff = transitions[i].state1_tariffs[j];
+
+              mws_connection_monitor_dummy_update_connection (MWS_CONNECTION_MONITOR_DUMMY (fixture->connection_monitor),
+                                                              id, connection);
+            }
+        }
+
+      if (transitions[i].state1_expected_active == transitions[i].state2_expected_active)
+        mws_signal_logger_assert_no_emissions (fixture->scheduler_signals);
+      else if (transitions[i].state2_expected_active)
+        assert_entries_changed_signals (fixture, NULL, NULL, NULL, entry_array, NULL);
+      else
+        assert_entries_changed_signals (fixture, NULL, NULL, entry_array, NULL, NULL);
+
+      /* Clean up. */
+      teardown (fixture, test_data);
+      setup (fixture, test_data);
+    }
+}
+
 int
 main (int    argc,
       char **argv)
@@ -948,6 +1296,9 @@ main (int    argc,
   g_test_add ("/scheduler/scheduling/metered-connection", Fixture,
               &standard_data, setup,
               test_scheduler_scheduling_metered_connection, teardown);
+  g_test_add ("/scheduler/scheduling/tariff", Fixture,
+              &standard_data, setup,
+              test_scheduler_scheduling_tariff, teardown);
 
   return g_test_run ();
 }
