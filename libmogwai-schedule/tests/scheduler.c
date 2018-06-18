@@ -560,6 +560,92 @@ test_scheduler_scheduling_peer_priorities (Fixture       *fixture,
                            G_N_ELEMENTS (expected_scheduling_order));
 }
 
+/* Test that the size of the set of active entries is limited by
+ * #MwsScheduler:max-active-entries, and that only elements in that set are
+ * mentioned in #MwsScheduler::active-entries-changed signals.
+ *
+ * Schedule two entries, then add two more with priorities such that one of them
+ * will be scheduled in place of one of the original entries. Remove one of the
+ * scheduled entries so one of the unscheduled entries is scheduled; then remove
+ * the remaining unscheduled entry to check that it’s not mentioned in
+ * ::active-entries-changed signals. */
+static void
+test_scheduler_scheduling_max_active_entries (Fixture       *fixture,
+                                              gconstpointer  test_data)
+{
+  const TestData *data = test_data;
+  g_assert (data->max_active_entries == 2);
+
+  g_autoptr(GError) local_error = NULL;
+
+  /* Add several entries. */
+  g_autoptr(MwsScheduleEntry) entry1 = schedule_entry_new_with_priority (":owner.1", 5);
+  g_autoptr(MwsScheduleEntry) entry2 = schedule_entry_new_with_priority (":owner.1", 10);
+
+  /* Set up the peer credentials. */
+  mws_peer_manager_dummy_set_peer_credentials (MWS_PEER_MANAGER_DUMMY (fixture->peer_manager),
+                                               ":owner.1", "/some/owner");
+
+  /* Add all the entries to the scheduler. */
+  g_autoptr(GPtrArray) added1 = g_ptr_array_new_with_free_func (NULL);
+  g_ptr_array_add (added1, entry1);
+  g_ptr_array_add (added1, entry2);
+
+  g_autoptr(GPtrArray) expected_active1 = g_ptr_array_new_with_free_func (NULL);
+  g_ptr_array_add (expected_active1, entry2);
+  g_ptr_array_add (expected_active1, entry1);
+
+  mws_scheduler_update_entries (fixture->scheduler, added1, NULL, &local_error);
+  g_assert_no_error (local_error);
+  assert_entries_changed_signals (fixture, added1, NULL, expected_active1, NULL, NULL);
+
+  /* Add some more entries, one of which at a higher priority so that one of the
+   * old ones is descheduled. */
+  g_autoptr(MwsScheduleEntry) entry3 = schedule_entry_new_with_priority (":owner.1", 15);
+  g_autoptr(MwsScheduleEntry) entry4 = schedule_entry_new_with_priority (":owner.1", 7);
+
+  g_autoptr(GPtrArray) added2 = g_ptr_array_new_with_free_func (NULL);
+  g_ptr_array_add (added2, entry3);
+  g_ptr_array_add (added2, entry4);
+
+  g_autoptr(GPtrArray) expected_active2 = g_ptr_array_new_with_free_func (NULL);
+  g_ptr_array_add (expected_active2, entry3);
+
+  g_autoptr(GPtrArray) expected_inactive1 = g_ptr_array_new_with_free_func (NULL);
+  g_ptr_array_add (expected_inactive1, entry1);
+
+  mws_scheduler_update_entries (fixture->scheduler, added2, NULL, &local_error);
+  g_assert_no_error (local_error);
+  assert_entries_changed_signals (fixture, added2, NULL, expected_active2, NULL, expected_inactive1);
+
+  /* Remove one of the high priority entries so another should be scheduled in
+   * its place. */
+  g_autoptr(GPtrArray) removed_ids1 = g_ptr_array_new_with_free_func (NULL);
+  g_ptr_array_add (removed_ids1, mws_schedule_entry_get_id (entry3));
+  g_autoptr(GPtrArray) removed1 = g_ptr_array_new_with_free_func (NULL);
+  g_ptr_array_add (removed1, entry3);
+
+  g_autoptr(GPtrArray) expected_active3 = g_ptr_array_new_with_free_func (NULL);
+  g_ptr_array_add (expected_active3, entry4);
+
+  g_autoptr(GPtrArray) expected_inactive2 = g_ptr_array_new_with_free_func (NULL);
+  g_ptr_array_add (expected_inactive2, entry3);
+
+  mws_scheduler_update_entries (fixture->scheduler, NULL, removed_ids1, &local_error);
+  g_assert_no_error (local_error);
+  assert_entries_changed_signals (fixture, NULL, removed1, expected_active3, expected_inactive2, NULL);
+
+  /* Now remove an inactive entry and check it’s not signalled. */
+  g_autoptr(GPtrArray) removed_ids2 = g_ptr_array_new_with_free_func (NULL);
+  g_ptr_array_add (removed_ids2, mws_schedule_entry_get_id (entry1));
+  g_autoptr(GPtrArray) removed2 = g_ptr_array_new_with_free_func (NULL);
+  g_ptr_array_add (removed2, entry1);
+
+  mws_scheduler_update_entries (fixture->scheduler, NULL, removed_ids2, &local_error);
+  g_assert_no_error (local_error);
+  assert_entries_changed_signals (fixture, NULL, removed2, NULL, NULL, NULL);
+}
+
 /* Test that the schedule entries for a given peer are automatically removed if
  * that peer vanishes, whether they are active or not. */
 static void
@@ -834,6 +920,10 @@ main (int    argc,
     {
       .max_active_entries = 1,
     };
+  const TestData max_active_entries_data =
+    {
+      .max_active_entries = 2,
+    };
 
   g_test_add_func ("/scheduler/construction", test_scheduler_construction);
   g_test_add ("/scheduler/entries", Fixture, &standard_data, setup,
@@ -849,6 +939,9 @@ main (int    argc,
   g_test_add ("/scheduler/scheduling/peer-priorities", Fixture,
               &standard_data, setup,
               test_scheduler_scheduling_peer_priorities, teardown);
+  g_test_add ("/scheduler/scheduling/max-active-entries", Fixture,
+              &max_active_entries_data, setup,
+              test_scheduler_scheduling_max_active_entries, teardown);
   g_test_add ("/scheduler/scheduling/peer-vanished", Fixture,
               &standard_data, setup,
               test_scheduler_scheduling_peer_vanished, teardown);
