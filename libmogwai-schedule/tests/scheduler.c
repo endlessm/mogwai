@@ -685,8 +685,8 @@ test_scheduler_scheduling_peer_vanished (Fixture       *fixture,
                                       ":owner.1");
 
   g_autoptr(GPtrArray) expected_removed = g_ptr_array_new_with_free_func (NULL);
-  g_ptr_array_add (expected_removed, entry1);
   g_ptr_array_add (expected_removed, entry2);
+  g_ptr_array_add (expected_removed, entry1);
 
   g_autoptr(GPtrArray) expected_active2 = g_ptr_array_new_with_free_func (NULL);
   g_ptr_array_add (expected_active2, entry3);
