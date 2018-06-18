@@ -29,6 +29,7 @@
 #include <libmogwai-schedule/scheduler.h>
 #include <libmogwai-schedule/schedule-service.h>
 #include <libmogwai-schedule/service.h>
+#include <libmogwai-schedule/clock-system.h>
 #include <libmogwai-schedule/tests/connection-monitor-dummy.h>
 #include <libmogwai-schedule/tests/peer-manager-dummy.h>
 #include <locale.h>
@@ -54,6 +55,7 @@ typedef struct
   GDBusConnection *client_connection;  /* (owned) */
   MwsConnectionMonitor *connection_monitor;  /* (owned) */
   MwsPeerManager *peer_manager;  /* (owned) */
+  MwsClock *clock;  /* (owned) */
   MwsScheduler *scheduler;  /* (owned) */
   MwsScheduleService *service;  /* (owned) */
 } BusFixture;
@@ -84,6 +86,7 @@ bus_setup (BusFixture    *fixture,
 
   fixture->connection_monitor = MWS_CONNECTION_MONITOR (mws_connection_monitor_dummy_new ());
   fixture->peer_manager = MWS_PEER_MANAGER (mws_peer_manager_dummy_new (FALSE));
+  fixture->clock = MWS_CLOCK (mws_clock_system_new ());
 
   /* Set some credentials for the first peer so calls don’t fail by default. We
    * can override this later by calling set_fail(). */
@@ -94,6 +97,7 @@ bus_setup (BusFixture    *fixture,
   fixture->scheduler = g_object_new (MWS_TYPE_SCHEDULER,
                                      "connection-monitor", fixture->connection_monitor,
                                      "peer-manager", fixture->peer_manager,
+                                     "clock", fixture->clock,
                                      "max-entries", 10,
                                      NULL);
 
@@ -114,6 +118,7 @@ bus_teardown (BusFixture    *fixture,
   g_clear_object (&fixture->service);
 
   g_clear_object (&fixture->scheduler);
+  g_clear_object (&fixture->clock);
   g_clear_object (&fixture->peer_manager);
   g_clear_object (&fixture->connection_monitor);
 

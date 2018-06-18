@@ -1,5 +1,7 @@
 libmogwai_schedule_api_version = '1'
 libmogwai_schedule_sources = [
+  'clock.c',
+  'clock-system.c',
   'connection-monitor.c',
   'connection-monitor-nm.c',
   'peer-manager.c',
@@ -10,6 +12,8 @@ libmogwai_schedule_sources = [
   'service.c',
 ]
 libmogwai_schedule_headers = [
+  'clock.h',
+  'clock-system.h',
   'connection-monitor.h',
   'connection-monitor-nm.h',
   'peer-manager.h',

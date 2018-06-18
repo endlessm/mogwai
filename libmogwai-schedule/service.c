@@ -27,6 +27,7 @@
 #include <glib-unix.h>
 #include <glib/gi18n-lib.h>
 #include <gio/gio.h>
+#include <libmogwai-schedule/clock-system.h>
 #include <libmogwai-schedule/connection-monitor-nm.h>
 #include <libmogwai-schedule/peer-manager-dbus.h>
 #include <libmogwai-schedule/schedule-service.h>
@@ -151,7 +152,9 @@ connection_monitor_new_cb (GObject      *source_object,
   g_autoptr(MwsPeerManager) peer_manager = NULL;
   peer_manager = MWS_PEER_MANAGER (mws_peer_manager_dbus_new (connection));
 
-  self->scheduler = mws_scheduler_new (connection_monitor, peer_manager);
+  g_autoptr(MwsClock) clock = MWS_CLOCK (mws_clock_system_new ());
+
+  self->scheduler = mws_scheduler_new (connection_monitor, peer_manager, clock);
   self->schedule_service = mws_schedule_service_new (connection,
                                                      "/com/endlessm/DownloadManager1",
                                                      self->scheduler);

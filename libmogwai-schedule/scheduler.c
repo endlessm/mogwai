@@ -26,6 +26,7 @@
 #include <glib-object.h>
 #include <glib/gi18n-lib.h>
 #include <gio/gio.h>
+#include <libmogwai-schedule/clock.h>
 #include <libmogwai-schedule/connection-monitor.h>
 #include <libmogwai-schedule/peer-manager.h>
 #include <libmogwai-schedule/schedule-entry.h>
@@ -101,10 +102,10 @@ struct _MwsScheduler
   /* Scheduling data sources. */
   MwsConnectionMonitor *connection_monitor;  /* (owned) */
   MwsPeerManager *peer_manager;  /* (owned) */
+  MwsClock *clock;  /* (owned) */
 
   /* Time tracking. */
-  GMainContext *reschedule_context;  /* (owned) */
-  GSource *reschedule_source;  /* (owned) (nullable) */
+  guint reschedule_alarm_id;  /* 0 when no reschedule is scheduled */
 
   /* Mapping from entry ID to (not nullable) entry. */
   GHashTable *entries;  /* (owned) (element-type utf8 MwsScheduleEntry) */
@@ -143,6 +144,7 @@ typedef enum
   PROP_MAX_ACTIVE_ENTRIES,
   PROP_PEER_MANAGER,
   PROP_ALLOW_DOWNLOADS,
+  PROP_CLOCK,
 } MwsSchedulerProperty;
 
 G_DEFINE_TYPE (MwsScheduler, mws_scheduler, G_TYPE_OBJECT)
@@ -151,7 +153,7 @@ static void
 mws_scheduler_class_init (MwsSchedulerClass *klass)
 {
   GObjectClass *object_class = (GObjectClass *) klass;
-  GParamSpec *props[PROP_ALLOW_DOWNLOADS + 1] = { NULL, };
+  GParamSpec *props[PROP_CLOCK + 1] = { NULL, };
 
   object_class->constructed = mws_scheduler_constructed;
   object_class->dispose = mws_scheduler_dispose;
@@ -265,6 +267,22 @@ mws_scheduler_class_init (MwsSchedulerClass *klass)
                             TRUE,
                             G_PARAM_READABLE | G_PARAM_STATIC_STRINGS);
 
+  /**
+   * MwsScheduler:clock:
+   *
+   * A #MwsClock instance to provide wall clock timing and alarms for time-based
+   * scheduling. Typically, this is provided by a #MwsClockSystem, using the
+   * system clock.
+   *
+   * Since: 0.1.0
+   */
+  props[PROP_CLOCK] =
+      g_param_spec_object ("clock", "Clock",
+                           "A #MwsClock instance to provide wall clock timing "
+                           "and alarms for time-based scheduling.",
+                           MWS_TYPE_CLOCK,
+                           G_PARAM_READWRITE | G_PARAM_CONSTRUCT_ONLY | G_PARAM_STATIC_STRINGS);
+
   g_object_class_install_properties (object_class, G_N_ELEMENTS (props), props);
 
   /**
@@ -313,7 +331,6 @@ mws_scheduler_class_init (MwsSchedulerClass *klass)
 static void
 mws_scheduler_init (MwsScheduler *self)
 {
-  self->reschedule_context = g_main_context_ref_thread_default ();
   self->entries = g_hash_table_new_full (g_str_hash, g_str_equal,
                                          NULL, g_object_unref);
   self->max_entries = DEFAULT_MAX_ENTRIES;
@@ -332,6 +349,7 @@ mws_scheduler_constructed (GObject *object)
   /* Check we have our construction properties. */
   g_assert (MWS_IS_CONNECTION_MONITOR (self->connection_monitor));
   g_assert (MWS_IS_PEER_MANAGER (self->peer_manager));
+  g_assert (MWS_IS_CLOCK (self->clock));
 
   /* Connect to signals from the connection monitor, which will trigger
    * rescheduling. */
@@ -378,13 +396,13 @@ mws_scheduler_dispose (GObject *object)
 
   g_clear_object (&self->peer_manager);
 
-  if (self->reschedule_source != NULL)
+  if (self->clock != NULL && self->reschedule_alarm_id != 0)
     {
-      g_source_destroy (self->reschedule_source);
-      g_source_unref (self->reschedule_source);
-      self->reschedule_source = NULL;
+      mws_clock_remove_alarm (self->clock, self->reschedule_alarm_id);
+      self->reschedule_alarm_id = 0;
     }
-  g_clear_pointer (&self->reschedule_context, g_main_context_unref);
+
+  g_clear_object (&self->clock);
 
   /* Chain up to the parent class */
   G_OBJECT_CLASS (mws_scheduler_parent_class)->dispose (object);
@@ -417,6 +435,9 @@ mws_scheduler_get_property (GObject    *object,
       break;
     case PROP_ALLOW_DOWNLOADS:
       g_value_set_boolean (value, mws_scheduler_get_allow_downloads (self));
+      break;
+    case PROP_CLOCK:
+      g_value_set_object (value, self->clock);
       break;
     default:
       g_assert_not_reached ();
@@ -455,6 +476,11 @@ mws_scheduler_set_property (GObject      *object,
       /* Construct only. */
       g_assert (self->peer_manager == NULL);
       self->peer_manager = g_value_dup_object (value);
+      break;
+    case PROP_CLOCK:
+      /* Construct only. */
+      g_assert (self->clock == NULL);
+      self->clock = g_value_dup_object (value);
       break;
     default:
       g_assert_not_reached ();
@@ -510,6 +536,7 @@ peer_manager_peer_vanished_cb (MwsPeerManager *manager,
  *    information about network connections to the scheduler
  * @peer_manager: (transfer none): a #MwsPeerManager to provide information
  *    about peers which are adding schedule entries to the scheduler
+ * @clock: (transfer none): a #MwsClock to provide timing information
  *
  * Create a new #MwsScheduler instance, with no schedule entries to begin
  * with.
@@ -519,14 +546,17 @@ peer_manager_peer_vanished_cb (MwsPeerManager *manager,
  */
 MwsScheduler *
 mws_scheduler_new (MwsConnectionMonitor *connection_monitor,
-                   MwsPeerManager       *peer_manager)
+                   MwsPeerManager       *peer_manager,
+                   MwsClock             *clock)
 {
   g_return_val_if_fail (MWS_IS_CONNECTION_MONITOR (connection_monitor), NULL);
   g_return_val_if_fail (MWS_IS_PEER_MANAGER (peer_manager), NULL);
+  g_return_val_if_fail (MWS_IS_CLOCK (clock), NULL);
 
   return g_object_new (MWS_TYPE_SCHEDULER,
                        "connection-monitor", connection_monitor,
                        "peer-manager", peer_manager,
+                       "clock", clock,
                        NULL);
 }
 
@@ -918,11 +948,10 @@ mws_scheduler_reschedule (MwsScheduler *self)
             g_hash_table_size (self->entries_data));
 
   /* Clear any pending reschedule. */
-  if (self->reschedule_source != NULL)
+  if (self->reschedule_alarm_id != 0)
     {
-      g_source_destroy (self->reschedule_source);
-      g_source_unref (self->reschedule_source);
-      self->reschedule_source = NULL;
+      mws_clock_remove_alarm (self->clock, self->reschedule_alarm_id);
+      self->reschedule_alarm_id = 0;
     }
 
   /* Preload information from the connection monitor. */
@@ -974,7 +1003,7 @@ mws_scheduler_reschedule (MwsScheduler *self)
 
   /* As we iterate over all the entries, see when the earliest time we next need
    * to reschedule is. */
-  g_autoptr(GDateTime) now = g_date_time_new_now_local ();
+  g_autoptr(GDateTime) now = mws_clock_get_now_local (self->clock);
   g_autoptr(GDateTime) next_reschedule = NULL;
 
   g_autofree gchar *now_str = g_date_time_format (now, "%FT%T%:::z");
@@ -1181,9 +1210,7 @@ mws_scheduler_reschedule (MwsScheduler *self)
       GTimeSpan interval = g_date_time_difference (next_reschedule, now);
       g_assert (interval >= 0);
 
-      self->reschedule_source = g_timeout_source_new_seconds (interval / G_USEC_PER_SEC);
-      g_source_set_callback (self->reschedule_source, reschedule_cb, self, NULL);
-      g_source_attach (self->reschedule_source, self->reschedule_context);
+      mws_clock_add_alarm (self->clock, next_reschedule, reschedule_cb, self, NULL);
 
       g_autofree gchar *next_reschedule_str = NULL;
       next_reschedule_str = g_date_time_format (next_reschedule, "%FT%T%:::z");
