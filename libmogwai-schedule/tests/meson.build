@@ -12,6 +12,8 @@ envs = test_env + [
 
 test_programs = [
   ['scheduler', [
+    'clock-dummy.c',
+    'clock-dummy.h',
     'connection-monitor-dummy.c',
     'connection-monitor-dummy.h',
     'peer-manager-dummy.c',
@@ -24,6 +26,8 @@ test_programs = [
     'signal-logger.h',
   ], deps],
   ['schedule-service', [
+    'clock-dummy.c',
+    'clock-dummy.h',
     'connection-monitor-dummy.c',
     'connection-monitor-dummy.h',
     'peer-manager-dummy.c',

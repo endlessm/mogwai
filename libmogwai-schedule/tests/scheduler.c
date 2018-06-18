@@ -25,7 +25,7 @@
 #include <glib.h>
 #include <gio/gio.h>
 #include <libmogwai-schedule/scheduler.h>
-#include <libmogwai-schedule/clock-system.h>
+#include <libmogwai-schedule/tests/clock-dummy.h>
 #include <libmogwai-schedule/tests/connection-monitor-dummy.h>
 #include <libmogwai-schedule/tests/peer-manager-dummy.h>
 #include <libmogwai-schedule/tests/signal-logger.h>
@@ -53,7 +53,7 @@ setup (Fixture       *fixture,
 {
   fixture->connection_monitor = MWS_CONNECTION_MONITOR (mws_connection_monitor_dummy_new ());
   fixture->peer_manager = MWS_PEER_MANAGER (mws_peer_manager_dummy_new (FALSE));
-  fixture->clock = MWS_CLOCK (mws_clock_system_new ());
+  fixture->clock = MWS_CLOCK (mws_clock_dummy_new ());
 
   fixture->scheduler = mws_scheduler_new (fixture->connection_monitor,
                                           fixture->peer_manager,
@@ -126,7 +126,7 @@ test_scheduler_construction (void)
   g_autoptr(MwsPeerManager) peer_manager = NULL;
   peer_manager = MWS_PEER_MANAGER (mws_peer_manager_dummy_new (FALSE));
 
-  g_autoptr(MwsClock) clock = MWS_CLOCK (mws_clock_system_new ());
+  g_autoptr(MwsClock) clock = MWS_CLOCK (mws_clock_dummy_new ());
 
   g_autoptr(MwsScheduler) scheduler = mws_scheduler_new (connection_monitor,
                                                          peer_manager,
