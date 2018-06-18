@@ -24,6 +24,7 @@
 
 #include <glib.h>
 #include <glib-object.h>
+#include <libmogwai-schedule/clock.h>
 #include <libmogwai-schedule/connection-monitor.h>
 #include <libmogwai-schedule/peer-manager.h>
 #include <libmogwai-schedule/schedule-entry.h>
@@ -58,7 +59,8 @@ GQuark mws_scheduler_error_quark (void);
 G_DECLARE_FINAL_TYPE (MwsScheduler, mws_scheduler, MWS, SCHEDULER, GObject)
 
 MwsScheduler     *mws_scheduler_new             (MwsConnectionMonitor *connection_monitor,
-                                                 MwsPeerManager       *peer_manager);
+                                                 MwsPeerManager       *peer_manager,
+                                                 MwsClock             *clock);
 
 MwsPeerManager   *mws_scheduler_get_peer_manager (MwsScheduler     *self);
 

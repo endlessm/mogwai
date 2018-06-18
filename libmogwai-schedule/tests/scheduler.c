@@ -25,6 +25,7 @@
 #include <glib.h>
 #include <gio/gio.h>
 #include <libmogwai-schedule/scheduler.h>
+#include <libmogwai-schedule/clock-system.h>
 #include <libmogwai-schedule/tests/connection-monitor-dummy.h>
 #include <libmogwai-schedule/tests/peer-manager-dummy.h>
 #include <libmogwai-schedule/tests/signal-logger.h>
@@ -41,6 +42,7 @@ typedef struct
 {
   MwsConnectionMonitor *connection_monitor;  /* (owned) */
   MwsPeerManager *peer_manager;  /* (owned) */
+  MwsClock *clock;  /* (owned) */
   MwsScheduler *scheduler;  /* (owned) */
   MwsSignalLogger *scheduler_signals;  /* (owned) */
 } Fixture;
@@ -51,9 +53,11 @@ setup (Fixture       *fixture,
 {
   fixture->connection_monitor = MWS_CONNECTION_MONITOR (mws_connection_monitor_dummy_new ());
   fixture->peer_manager = MWS_PEER_MANAGER (mws_peer_manager_dummy_new (FALSE));
+  fixture->clock = MWS_CLOCK (mws_clock_system_new ());
 
   fixture->scheduler = mws_scheduler_new (fixture->connection_monitor,
-                                          fixture->peer_manager);
+                                          fixture->peer_manager,
+                                          fixture->clock);
   fixture->scheduler_signals = mws_signal_logger_new ();
   mws_signal_logger_connect (fixture->scheduler_signals,
                              fixture->scheduler, "notify::allow-downloads");
@@ -75,6 +79,7 @@ teardown (Fixture       *fixture,
   g_clear_pointer (&fixture->scheduler_signals, (GDestroyNotify) mws_signal_logger_free);
 
   g_clear_object (&fixture->scheduler);
+  g_clear_object (&fixture->clock);
   g_clear_object (&fixture->peer_manager);
   g_clear_object (&fixture->connection_monitor);
 }
@@ -121,8 +126,11 @@ test_scheduler_construction (void)
   g_autoptr(MwsPeerManager) peer_manager = NULL;
   peer_manager = MWS_PEER_MANAGER (mws_peer_manager_dummy_new (FALSE));
 
+  g_autoptr(MwsClock) clock = MWS_CLOCK (mws_clock_system_new ());
+
   g_autoptr(MwsScheduler) scheduler = mws_scheduler_new (connection_monitor,
-                                                         peer_manager);
+                                                         peer_manager,
+                                                         clock);
 
   /* Do something to avoid the compiler warning about unused variables. */
   g_assert_true (mws_scheduler_get_peer_manager (scheduler) == peer_manager);
@@ -377,6 +385,7 @@ test_scheduler_properties (Fixture       *fixture,
   guint max_active_entries;
   g_autoptr(MwsPeerManager) peer_manager = NULL;
   gboolean allow_downloads;
+  g_autoptr(MwsClock) clock = NULL;
 
   g_object_get (fixture->scheduler,
                 "entries", &entries,
@@ -385,6 +394,7 @@ test_scheduler_properties (Fixture       *fixture,
                 "max-active-entries", &max_active_entries,
                 "peer-manager", &peer_manager,
                 "allow-downloads", &allow_downloads,
+                "clock", &clock,
                 NULL);
 
   g_assert_nonnull (entries);
@@ -392,6 +402,7 @@ test_scheduler_properties (Fixture       *fixture,
   g_assert_nonnull (connection_monitor);
   g_assert_cmpuint (max_active_entries, >, 0);
   g_assert_nonnull (peer_manager);
+  g_assert_nonnull (clock);
 }
 
 /* Convenience method to create a new schedule entry and set its priority. */
