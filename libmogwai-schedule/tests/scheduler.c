@@ -150,13 +150,21 @@ test_scheduler_construction (void)
 }
 
 /* Assert the signal emissions from #MwsScheduler are correct for a single call
- * to mws_scheduler_update_entries(). */
+ * to mws_scheduler_update_entries().
+ *
+ * Two arrays of entries expected to be signalled as removed in a
+ * #MwsScheduler::active-entries-changed signal must be provided:
+ *  * @expected_changed_active_removed1 for the entries signalled before
+ *    #MwsScheduler::entries-changed is emitted
+ *  * expected_changed_active_removed2 for the entries signalled afterwards
+ */
 static void
 assert_entries_changed_signals (Fixture   *fixture,
                                 GPtrArray *expected_changed_added,
                                 GPtrArray *expected_changed_removed,
                                 GPtrArray *expected_changed_active_added,
-                                GPtrArray *expected_changed_active_removed)
+                                GPtrArray *expected_changed_active_removed1,
+                                GPtrArray *expected_changed_active_removed2)
 {
   /* Squash empty arrays. */
   if (expected_changed_added != NULL && expected_changed_added->len == 0)
@@ -165,8 +173,10 @@ assert_entries_changed_signals (Fixture   *fixture,
     expected_changed_removed = NULL;
   if (expected_changed_active_added != NULL && expected_changed_active_added->len == 0)
     expected_changed_active_added = NULL;
-  if (expected_changed_active_removed != NULL && expected_changed_active_removed->len == 0)
-    expected_changed_active_removed = NULL;
+  if (expected_changed_active_removed1 != NULL && expected_changed_active_removed1->len == 0)
+    expected_changed_active_removed1 = NULL;
+  if (expected_changed_active_removed2 != NULL && expected_changed_active_removed2->len == 0)
+    expected_changed_active_removed2 = NULL;
 
   g_autoptr(GPtrArray) changed_added = NULL;
   g_autoptr(GPtrArray) changed_removed = NULL;
@@ -179,7 +189,7 @@ assert_entries_changed_signals (Fixture   *fixture,
    * entries (if there are any); then notify::entries and entries-changed; then
    * active-entries-changed *again* for added active entries (if there are
    * any). */
-  if (expected_changed_active_removed != NULL)
+  if (expected_changed_active_removed1 != NULL)
     mws_signal_logger_assert_emission_pop (fixture->scheduler_signals,
                                            fixture->scheduler, "active-entries-changed",
                                            &changed_active_added1, &changed_active_removed1);
@@ -202,9 +212,9 @@ assert_entries_changed_signals (Fixture   *fixture,
   assert_ptr_arrays_equal (changed_added, expected_changed_added);
   assert_ptr_arrays_equal (changed_removed, expected_changed_removed);
   assert_ptr_arrays_equal (changed_active_added1, NULL);
-  assert_ptr_arrays_equal (changed_active_removed1, expected_changed_active_removed);
+  assert_ptr_arrays_equal (changed_active_removed1, expected_changed_active_removed1);
   assert_ptr_arrays_equal (changed_active_added2, expected_changed_active_added);
-  assert_ptr_arrays_equal (changed_active_removed2, NULL);
+  assert_ptr_arrays_equal (changed_active_removed2, expected_changed_active_removed2);
 }
 
 /* Test that entries are added to and removed from the scheduler correctly. */
@@ -236,7 +246,7 @@ test_scheduler_entries (Fixture       *fixture,
 
   entries = mws_scheduler_get_entries (fixture->scheduler);
   g_assert_cmpuint (g_hash_table_size (entries), ==, 1);
-  assert_entries_changed_signals (fixture, added1, NULL, added1, NULL);
+  assert_entries_changed_signals (fixture, added1, NULL, added1, NULL, NULL);
 
   MwsScheduleEntry *entry = mws_scheduler_get_entry (fixture->scheduler, "0");
   g_assert_nonnull (entry);
@@ -255,7 +265,7 @@ test_scheduler_entries (Fixture       *fixture,
 
   entries = mws_scheduler_get_entries (fixture->scheduler);
   g_assert_cmpuint (g_hash_table_size (entries), ==, 0);
-  assert_entries_changed_signals (fixture, NULL, expected_removed1, NULL, expected_removed1);
+  assert_entries_changed_signals (fixture, NULL, expected_removed1, NULL, expected_removed1, NULL);
 
   /* Remove a non-existent entry. */
   g_autoptr(GPtrArray) removed2 = g_ptr_array_new_with_free_func (NULL);
@@ -284,7 +294,7 @@ test_scheduler_entries (Fixture       *fixture,
 
   entries = mws_scheduler_get_entries (fixture->scheduler);
   g_assert_cmpuint (g_hash_table_size (entries), ==, 3);
-  assert_entries_changed_signals (fixture, added2, NULL, added_active2, NULL);
+  assert_entries_changed_signals (fixture, added2, NULL, added_active2, NULL, NULL);
 
   /* Add duplicate entry. */
   g_autoptr(GPtrArray) added3 = g_ptr_array_new_with_free_func (NULL);
@@ -326,7 +336,7 @@ test_scheduler_entries (Fixture       *fixture,
 
   entries = mws_scheduler_get_entries (fixture->scheduler);
   g_assert_cmpuint (g_hash_table_size (entries), ==, 0);
-  assert_entries_changed_signals (fixture, NULL, expected_removed3, NULL, added_active2);
+  assert_entries_changed_signals (fixture, NULL, expected_removed3, NULL, added_active2, NULL);
 }
 
 /* Test that entries can be removed by owner from a scheduler correctly. */
@@ -353,7 +363,7 @@ test_scheduler_entries_remove_for_owner (Fixture       *fixture,
 
   entries = mws_scheduler_get_entries (fixture->scheduler);
   g_assert_cmpuint (g_hash_table_size (entries), ==, 3);
-  assert_entries_changed_signals (fixture, added1, NULL, added_active1, NULL);
+  assert_entries_changed_signals (fixture, added1, NULL, added_active1, NULL, NULL);
 
   /* Remove all entries from one owner, including the active entry. */
   success = mws_scheduler_remove_entries_for_owner (fixture->scheduler, ":owner.1", &local_error);
@@ -372,7 +382,7 @@ test_scheduler_entries_remove_for_owner (Fixture       *fixture,
 
   entries = mws_scheduler_get_entries (fixture->scheduler);
   g_assert_cmpuint (g_hash_table_size (entries), ==, 1);
-  assert_entries_changed_signals (fixture, NULL, removed1, added_active2, added_active1);
+  assert_entries_changed_signals (fixture, NULL, removed1, added_active2, added_active1, NULL);
 
   /* Remove entries from a non-existent owner. */
   success = mws_scheduler_remove_entries_for_owner (fixture->scheduler, ":owner.100", &local_error);
@@ -393,7 +403,7 @@ test_scheduler_entries_remove_for_owner (Fixture       *fixture,
 
   entries = mws_scheduler_get_entries (fixture->scheduler);
   g_assert_cmpuint (g_hash_table_size (entries), ==, 0);
-  assert_entries_changed_signals (fixture, NULL, removed2, NULL, added_active2);
+  assert_entries_changed_signals (fixture, NULL, removed2, NULL, added_active2, NULL);
 }
 
 /* Test that getting the properties from a #MwsScheduler works. */
@@ -467,7 +477,7 @@ assert_scheduling_order (Fixture                 *fixture,
 
   mws_scheduler_update_entries (fixture->scheduler, added, NULL, &local_error);
   g_assert_no_error (local_error);
-  assert_entries_changed_signals (fixture, added, NULL, expected_active, NULL);
+  assert_entries_changed_signals (fixture, added, NULL, expected_active, NULL, NULL);
 
   /* Remove each active entry to work out what is going to be scheduled next. */
   for (gsize i = 0; i < n_entries; i++)
@@ -487,7 +497,7 @@ assert_scheduling_order (Fixture                 *fixture,
       g_assert_no_error (local_error);
       assert_entries_changed_signals (fixture,
                                       NULL, expected_removed,
-                                      expected_active, old_expected_active);
+                                      expected_active, old_expected_active, NULL);
     }
 }
 
@@ -581,7 +591,7 @@ test_scheduler_scheduling_peer_vanished (Fixture       *fixture,
 
   mws_scheduler_update_entries (fixture->scheduler, added, NULL, &local_error);
   g_assert_no_error (local_error);
-  assert_entries_changed_signals (fixture, added, NULL, expected_active1, NULL);
+  assert_entries_changed_signals (fixture, added, NULL, expected_active1, NULL, NULL);
 
   /* Make `:owner.1` vanish, and check that both its entries (but not the third
    * entry) disappear. */
@@ -595,14 +605,15 @@ test_scheduler_scheduling_peer_vanished (Fixture       *fixture,
   g_autoptr(GPtrArray) expected_active2 = g_ptr_array_new_with_free_func (NULL);
   g_ptr_array_add (expected_active2, entry3);
 
-  assert_entries_changed_signals (fixture, NULL, expected_removed, expected_active2, expected_active1);
+  assert_entries_changed_signals (fixture, NULL, expected_removed,
+                                  expected_active2, expected_active1, NULL);
 
   /* Now make `:owner.2` vanish, to test what happens when there will be no new
    * active entry to take the place of the one being removed. */
   mws_peer_manager_dummy_remove_peer (MWS_PEER_MANAGER_DUMMY (fixture->peer_manager),
                                       ":owner.2");
 
-  assert_entries_changed_signals (fixture, NULL, expected_active2, NULL, expected_active2);
+  assert_entries_changed_signals (fixture, NULL, expected_active2, NULL, expected_active2, NULL);
 }
 
 /* Test the transitions between different network connection states, checking
@@ -757,7 +768,7 @@ test_scheduler_scheduling_metered_connection (Fixture       *fixture,
       g_assert_no_error (local_error);
       assert_entries_changed_signals (fixture, entry_array, NULL,
                                       (transitions[i].state1_expected_active ? entry_array : NULL),
-                                      NULL);
+                                      NULL, NULL);
 
       /* Change to the next connection state. */
       for (gsize j = 0; j < G_N_ELEMENTS (transitions[i].state2_connections); j++)
@@ -778,9 +789,9 @@ test_scheduler_scheduling_metered_connection (Fixture       *fixture,
       if (transitions[i].state1_expected_active == transitions[i].state2_expected_active)
         mws_signal_logger_assert_no_emissions (fixture->scheduler_signals);
       else if (transitions[i].state1_expected_active)
-        assert_entries_changed_signals (fixture, NULL, NULL, NULL, entry_array);
+        assert_entries_changed_signals (fixture, NULL, NULL, NULL, entry_array, NULL);
       else
-        assert_entries_changed_signals (fixture, NULL, NULL, entry_array, NULL);
+        assert_entries_changed_signals (fixture, NULL, NULL, entry_array, NULL, NULL);
 
       /* Change back to the previous connection state. The entry’s scheduled
        * state should always be the same as before. */
@@ -802,9 +813,9 @@ test_scheduler_scheduling_metered_connection (Fixture       *fixture,
       if (transitions[i].state1_expected_active == transitions[i].state2_expected_active)
         mws_signal_logger_assert_no_emissions (fixture->scheduler_signals);
       else if (transitions[i].state2_expected_active)
-        assert_entries_changed_signals (fixture, NULL, NULL, NULL, entry_array);
+        assert_entries_changed_signals (fixture, NULL, NULL, NULL, entry_array, NULL);
       else
-        assert_entries_changed_signals (fixture, NULL, NULL, entry_array, NULL);
+        assert_entries_changed_signals (fixture, NULL, NULL, entry_array, NULL, NULL);
 
       /* Clean up. */
       teardown (fixture, test_data);
