@@ -29,7 +29,7 @@
 #include <libmogwai-schedule/scheduler.h>
 #include <libmogwai-schedule/schedule-service.h>
 #include <libmogwai-schedule/service.h>
-#include <libmogwai-schedule/clock-system.h>
+#include <libmogwai-schedule/tests/clock-dummy.h>
 #include <libmogwai-schedule/tests/connection-monitor-dummy.h>
 #include <libmogwai-schedule/tests/peer-manager-dummy.h>
 #include <locale.h>
@@ -86,7 +86,7 @@ bus_setup (BusFixture    *fixture,
 
   fixture->connection_monitor = MWS_CONNECTION_MONITOR (mws_connection_monitor_dummy_new ());
   fixture->peer_manager = MWS_PEER_MANAGER (mws_peer_manager_dummy_new (FALSE));
-  fixture->clock = MWS_CLOCK (mws_clock_system_new ());
+  fixture->clock = MWS_CLOCK (mws_clock_dummy_new ());
 
   /* Set some credentials for the first peer so calls don’t fail by default. We
    * can override this later by calling set_fail(). */
