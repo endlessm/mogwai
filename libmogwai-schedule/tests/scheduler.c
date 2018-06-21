@@ -1096,7 +1096,7 @@ test_scheduler_scheduling_tariff (Fixture       *fixture,
 
   for (gsize i = 0; i < G_N_ELEMENTS (transitions); i++)
     {
-      /* Set up the datess/times. The date/time figures in the test vector are
+      /* Set up the dates/times. The date/time figures in the test vector are
        * given in UTC and converted to the stated timezone, so they represent
        * the same instant as the UTC time, but with a likely different wall
        * clock time. */
