@@ -150,7 +150,7 @@ mws_clock_system_add_alarm (MwsClock       *clock,
   g_source_set_callback (source, alarm_func, user_data, destroy_func);
   g_source_attach (source, self->context);
 
-  guint id = GPOINTER_TO_UINT (source);
+  guint id = g_source_get_id (source);
   g_ptr_array_add (self->alarms, g_steal_pointer (&source));
 
   g_autofree gchar *alarm_time_str = NULL;
@@ -166,7 +166,7 @@ mws_clock_system_remove_alarm (MwsClock *clock,
                                guint     id)
 {
   MwsClockSystem *self = MWS_CLOCK_SYSTEM (clock);
-  GSource *source = GUINT_TO_POINTER (id);
+  GSource *source = g_main_context_find_source_by_id (self->context, id);
 
   g_debug ("%s: Removing alarm %u", G_STRFUNC, id);
 
