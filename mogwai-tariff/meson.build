@@ -4,7 +4,7 @@ mogwai_tariff_sources = [
 
 mogwai_tariff_deps = [
   dependency('gio-2.0', version: '>= 2.44'),
-  dependency('glib-2.0', version: '>= 2.54'),
+  libglib_dep,
   dependency('gobject-2.0', version: '>= 2.44'),
   libmogwai_tariff_dep,
 ]
@@ -12,6 +12,7 @@ mogwai_tariff_deps = [
 executable('mogwai-tariff-' + libmogwai_tariff_api_version,
   mogwai_tariff_sources,
   dependencies: mogwai_tariff_deps,
+  include_directories: root_inc,
   install: true,
 )
 

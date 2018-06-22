@@ -1,0 +1,71 @@
+image: debian:unstable
+
+before_script:
+  - apt update -qq
+  - apt install -y -qq build-essential meson pkg-config gtk-doc-tools
+                       libxml2-utils gobject-introspection
+                       libgirepository1.0-dev libglib2.0-dev libsystemd-dev
+                       libsoup2.4-dev libnm-dev lcov python3-dbusmock
+                       git gettext libelf-dev libmount-dev libpcre3-dev
+                       libselinux1-dev zlib1g-dev libffi-dev
+  - export LANG=C.UTF-8
+
+stages:
+  - build
+  - test
+  - deploy
+
+cache:
+  paths:
+    - _ccache/
+
+debian-unstable:
+  stage: build
+  except:
+    - tags
+  script:
+    # FIXME: Enable --werror once we don't have glib-2.0 as a subproject
+    - meson --buildtype debug _build .
+    - ninja -C _build
+  artifacts:
+    when: on_failure
+    name: "mogwai-${CI_COMMIT_REF_NAME}"
+    paths:
+      - "${CI_PROJECT_DIR}/_build/meson-logs"
+
+test:
+  stage: test
+  script:
+    - meson _build . -Db_coverage=true
+    - meson test -C _build --no-suite glib-2.0
+    - ninja -C _build coverage
+  coverage: '/^\s+lines\.+:\s+([\d.]+\%)\s+/'
+
+# FIXME: Run gtkdoc-check when we can. See:
+# https://github.com/mesonbuild/meson/issues/3580
+
+dist-job:
+  stage: build
+  only:
+    - tags
+  script:
+    - meson --buildtype release _build .
+    - ninja -C _build dist
+  artifacts:
+    paths:
+      - "${CI_PROJECT_DIR}/_build/meson-dist/mogwai-*.tar.xz"
+
+pages:
+  stage: deploy
+  only:
+    - master
+  script:
+    - meson -Db_coverage=true -Ddocumentation=true _build .
+    - ninja -C _build test mogwai-doc
+    - ninja -C _build coverage
+    - mkdir -p public/
+    - mv _build/mogwai/docs/html/ public/docs/
+    - mv _build/meson-logs/coveragereport/ public/coverage/
+  artifacts:
+    paths:
+      - public
