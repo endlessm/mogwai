@@ -8,6 +8,9 @@ project('mogwai','c',
   ],
 )
 
+# Dependency on GLib. We depend on 2.57.1, which isn’t packaged yet.
+libglib_dep = dependency('glib-2.0', version: '>= 2.57.1')
+
 gnome = import('gnome')
 pkgconfig = import('pkgconfig')
 
