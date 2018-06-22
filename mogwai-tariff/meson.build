@@ -12,6 +12,7 @@ mogwai_tariff_deps = [
 executable('mogwai-tariff-' + libmogwai_tariff_api_version,
   mogwai_tariff_sources,
   dependencies: mogwai_tariff_deps,
+  include_directories: root_inc,
   install: true,
 )
 

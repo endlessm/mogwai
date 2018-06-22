@@ -13,6 +13,7 @@ mogwai_schedule_client_deps = [
 executable('mogwai-schedule-client-' + mogwai_scheduled_api_version,
   mogwai_schedule_client_sources,
   dependencies: mogwai_schedule_client_deps,
+  include_directories: root_inc,
   install: true,
 )
 
