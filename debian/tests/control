@@ -1,9 +1,0 @@
-Tests: gnome-desktop-testing
-Depends:
- gnome-desktop-testing,
- libmogwai-schedule-1-tests,
- libmogwai-schedule-client-0-tests,
- libmogwai-tariff-0-tests,
- mogwai-schedule-tools-tests,
- mogwai-scheduled-tests,
- mogwai-tariff-tools-tests,
