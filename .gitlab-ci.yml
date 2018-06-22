@@ -61,10 +61,9 @@ pages:
     - master
   script:
     - meson -Db_coverage=true -Ddocumentation=true _build .
-    - ninja -C _build test mogwai-doc
+    - ninja -C _build test
     - ninja -C _build coverage
     - mkdir -p public/
-    - mv _build/mogwai/docs/html/ public/docs/
     - mv _build/meson-logs/coveragereport/ public/coverage/
   artifacts:
     paths:
