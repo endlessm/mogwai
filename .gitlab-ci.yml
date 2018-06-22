@@ -61,7 +61,7 @@ pages:
     - master
   script:
     - meson -Db_coverage=true -Ddocumentation=true _build .
-    - ninja -C _build test
+    - meson test -C _build --no-suite glib-2.0
     - ninja -C _build coverage
     - mkdir -p public/
     - mv _build/meson-logs/coveragereport/ public/coverage/
