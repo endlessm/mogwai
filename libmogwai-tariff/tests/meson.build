@@ -1,6 +1,6 @@
 deps = [
   dependency('gio-2.0', version: '>= 2.44'),
-  dependency('glib-2.0', version: '>= 2.44'),
+  dependency('glib-2.0', version: '>= 2.57.1'),
   dependency('gobject-2.0', version: '>= 2.44'),
   libmogwai_tariff_dep,
 ]
