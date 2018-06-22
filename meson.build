@@ -8,8 +8,10 @@ project('mogwai','c',
   ],
 )
 
-# Dependency on GLib. We depend on 2.57.1, which isn’t packaged yet.
-libglib_dep = dependency('glib-2.0', version: '>= 2.57.1')
+# Dependency on GLib. We depend on 2.57.1, which isn’t packaged yet. When it
+# is packaged in Debian Unstable, we can drop this subproject dependency (FIXME).
+libglib_dep = dependency('glib-2.0', version: '>= 2.57.1',
+                         fallback: ['glib-2.0', 'libglib_dep'])
 
 gnome = import('gnome')
 pkgconfig = import('pkgconfig')
