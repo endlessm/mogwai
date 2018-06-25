@@ -941,7 +941,7 @@ test_scheduler_scheduling_tariff (Fixture       *fixture,
                                                          tariff1_period2_end,
                                                          MWT_PERIOD_REPEAT_DAY,
                                                          1,
-                                                         "capacity-limit", 0,
+                                                         "capacity-limit", G_GUINT64_CONSTANT (0),
                                                          NULL);
   g_ptr_array_add (tariff1_periods, tariff1_period2);
 
@@ -973,7 +973,7 @@ test_scheduler_scheduling_tariff (Fixture       *fixture,
                                                          tariff2_period1_end,
                                                          MWT_PERIOD_REPEAT_DAY,
                                                          1,
-                                                         "capacity-limit", 0,
+                                                         "capacity-limit", G_GUINT64_CONSTANT (0),
                                                          NULL);
   g_ptr_array_add (tariff2_periods, tariff2_period1);
 
@@ -998,7 +998,7 @@ test_scheduler_scheduling_tariff (Fixture       *fixture,
                                                          tariff3_period1_end,
                                                          MWT_PERIOD_REPEAT_NONE,
                                                          0,
-                                                         "capacity-limit", 0,
+                                                         "capacity-limit", G_GUINT64_CONSTANT (0),
                                                          NULL);
   g_ptr_array_add (tariff3_periods, tariff3_period1);
 
