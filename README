@@ -11,9 +11,9 @@ All the library APIs are currently unstable and are likely to change wildly.
 Dependencies
 ============
 
- • gio-2.0 ≥ 2.54
- • glib-2.0 ≥ 2.54
- • gobject-2.0 ≥ 2.54
+ • gio-2.0 ≥ 2.57.1
+ • glib-2.0 ≥ 2.57.1
+ • gobject-2.0 ≥ 2.57.1
  • libsoup-2.4 ≥ 2.42
  • systemd
 
@@ -27,10 +27,12 @@ Bugs
 ====
 
 Bug reports and patches should be reported by e-mail to one of the authors or
-filed in GitHub.
+filed in GitLab:
+
+https://gitlab.freedesktop.org/pwithnall/mogwai
 
 Contact
 =======
 
 Philip Withnall <withnall@endlessm.com>
-https://github.com/endlessm/mogwai
+https://gitlab.freedesktop.org/pwithnall/mogwai
