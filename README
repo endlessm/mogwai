@@ -27,10 +27,12 @@ Bugs
 ====
 
 Bug reports and patches should be reported by e-mail to one of the authors or
-filed in GitHub.
+filed in GitLab:
+
+https://gitlab.freedesktop.org/pwithnall/mogwai
 
 Contact
 =======
 
 Philip Withnall <withnall@endlessm.com>
-https://github.com/endlessm/mogwai
+https://gitlab.freedesktop.org/pwithnall/mogwai

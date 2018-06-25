@@ -2,9 +2,9 @@
 	<name xml:lang="en">Mogwai</name>
 	<shortdesc xml:lang="en">Mogwai monitors network usage and schedules downloads to minimise their cost</shortdesc>
 	<description xml:lang="en">Mogwai allows systems to take advantage of reduced cost bandwidth at off-peak times of day. It provides a monitoring daemon which checks bandwidth usage, a scheduling daemon which prioritises downloads to minimise cost, and a tariff library which describes different data plans.</description>
-	<homepage rdf:resource="https://github.com/endlessm/mogwai"/>
+	<homepage rdf:resource="https://gitlab.freedesktop.org/pwithnall/mogwai"/>
 	<license rdf:resource="http://usefulinc.com/doap/licenses/lgpl"/>
-	<download-page rdf:resource="https://github.com/endlessm/mogwai"/>
+	<download-page rdf:resource="https://gitlab.freedesktop.org/pwithnall/mogwai"/>
 	<maintainer>
 		<foaf:Person>
 			<foaf:name>Philip Withnall</foaf:name>
