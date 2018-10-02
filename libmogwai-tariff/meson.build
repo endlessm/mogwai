@@ -13,7 +13,7 @@ libmogwai_tariff_headers = [
   'tariff.h',
 ]
 
-libmogwai_tariff_deps = [
+libmogwai_tariff_public_deps = [
   dependency('gio-2.0', version: '>= 2.44'),
   libglib_dep,
   dependency('gobject-2.0', version: '>= 2.54'),
@@ -30,7 +30,7 @@ libmogwai_tariff_enums = gnome.mkenums_simple('enums',
 libmogwai_tariff = library(libmogwai_tariff_api_name,
   libmogwai_tariff_sources + libmogwai_tariff_headers,
   libmogwai_tariff_enums,
-  dependencies: libmogwai_tariff_deps,
+  dependencies: libmogwai_tariff_public_deps,
   include_directories: root_inc,
   install: true,
   version: meson.project_version(),
@@ -53,9 +53,7 @@ pkgconfig.generate(
   name: 'libmogwai-tariff',
   filebase: libmogwai_tariff_api_name,
   description: 'Library describing network connection tariffs.',
-  # FIXME: This should be derived from libmogwai_tariff_deps with Meson 0.45;
-  # see the `libraries` docs: http://mesonbuild.com/Pkgconfig-module.html#pkggenerate
-  requires: [ 'gio-2.0', 'glib-2.0', 'gobject-2.0' ],
+  requires: libmogwai_tariff_public_deps,
 )
 
 if not cc.has_function('posix_memalign')
