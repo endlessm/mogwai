@@ -9,7 +9,7 @@ libmogwai_schedule_client_headers = [
   'scheduler.h',
 ]
 
-libmogwai_schedule_client_deps = [
+libmogwai_schedule_client_public_deps = [
   dependency('gio-2.0', version: '>= 2.46'),
   libglib_dep,
   dependency('gobject-2.0', version: '>= 2.54'),
@@ -17,7 +17,7 @@ libmogwai_schedule_client_deps = [
 
 libmogwai_schedule_client = library(libmogwai_schedule_client_api_name,
   libmogwai_schedule_client_sources + libmogwai_schedule_client_headers,
-  dependencies: libmogwai_schedule_client_deps,
+  dependencies: libmogwai_schedule_client_public_deps,
   include_directories: root_inc,
   install: true,
   version: meson.project_version(),
@@ -40,8 +40,7 @@ pkgconfig.generate(
   name: 'libmogwai-schedule-client',
   filebase: libmogwai_schedule_client_api_name,
   description: 'Client library for download scheduling service.',
-  # FIXME: This should be derived from libmogwai_schedule_client_deps.
-  requires: [ 'gio-2.0', 'glib-2.0', 'gobject-2.0' ],
+  requires: libmogwai_schedule_client_public_deps,
 )
 
 subdir('tests')
