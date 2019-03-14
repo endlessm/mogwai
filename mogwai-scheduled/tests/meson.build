@@ -1,5 +1,5 @@
-py3_mod = import('python3')
-py3 = py3_mod.find_python()
+py3_mod = import('python')
+py3 = py3_mod.find_installation('python3')
 
 envs = test_env + [
   'G_TEST_SRCDIR=' + meson.current_source_dir(),
