@@ -245,8 +245,8 @@ hlp_service_dispose (GObject *object)
   HlpService *self = HLP_SERVICE (object);
   HlpServicePrivate *priv = hlp_service_get_instance_private (self);
 
-  g_clear_pointer (&priv->sigint_source, (GDestroyNotify) source_destroy_and_unref);
-  g_clear_pointer (&priv->sigterm_source, (GDestroyNotify) source_destroy_and_unref);
+  g_clear_pointer (&priv->sigint_source, source_destroy_and_unref);
+  g_clear_pointer (&priv->sigterm_source, source_destroy_and_unref);
 
   cancel_inactivity_timeout (self);
 
@@ -382,7 +382,7 @@ signal_sigint_cb (gpointer user_data)
 
   /* Remove the signal handler so we can re-raise it later without entering a
    * loop. */
-  g_clear_pointer (&priv->sigint_source, (GDestroyNotify) source_destroy_and_unref);
+  g_clear_pointer (&priv->sigint_source, source_destroy_and_unref);
   return G_SOURCE_REMOVE;
 }
 
@@ -396,7 +396,7 @@ signal_sigterm_cb (gpointer user_data)
 
   /* Remove the signal handler so we can re-raise it later without entering a
    * loop. */
-  g_clear_pointer (&priv->sigterm_source, (GDestroyNotify) source_destroy_and_unref);
+  g_clear_pointer (&priv->sigterm_source, source_destroy_and_unref);
   return G_SOURCE_REMOVE;
 }
 
@@ -454,8 +454,7 @@ cancel_inactivity_timeout (HlpService *self)
   g_debug ("%s: Cancelling inactivity timeout (was %s)",
            G_STRFUNC, (priv->inactivity_timeout_source != NULL) ? "set" : "unset");
 
-  g_clear_pointer (&priv->inactivity_timeout_source,
-                   (GDestroyNotify) source_destroy_and_unref);
+  g_clear_pointer (&priv->inactivity_timeout_source, source_destroy_and_unref);
 }
 
 static void
