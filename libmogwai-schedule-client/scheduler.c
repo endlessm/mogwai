@@ -796,6 +796,22 @@ mwsc_scheduler_new_full_finish (GAsyncResult  *result,
                                                       result, error));
 }
 
+/* Steal the given element from the array. This assumes the array’s free
+ * function is g_object_unref().
+ *
+ * FIXME: Use g_ptr_array_steal_index_fast() when we have a version of GLib
+ * supporting it. See: https://bugzilla.gnome.org/show_bug.cgi?id=795376. */
+static gpointer
+ptr_array_steal_index_fast (GPtrArray *array,
+                            guint      index_)
+{
+  g_ptr_array_set_free_func (array, NULL);
+  g_autoptr(GObject) obj = g_ptr_array_remove_index_fast (array, index_);
+  g_ptr_array_set_free_func (array, (GDestroyNotify) g_object_unref);
+
+  return g_steal_pointer (&obj);
+}
+
 static void schedule_cb (GObject      *obj,
                          GAsyncResult *result,
                          gpointer      user_data);
@@ -847,22 +863,6 @@ mwsc_scheduler_schedule_async (MwscScheduler       *self,
   g_ptr_array_add (parameters_array, parameters);
   mwsc_scheduler_schedule_entries_async (self, parameters_array, cancellable,
                                          schedule_cb, g_steal_pointer (&task));
-}
-
-/* Steal the given element from the array. This assumes the array’s free
- * function is g_object_unref().
- *
- * FIXME: Use g_ptr_array_steal_index_fast() when we have a version of GLib
- * supporting it. See: https://bugzilla.gnome.org/show_bug.cgi?id=795376. */
-static gpointer
-ptr_array_steal_index_fast (GPtrArray *array,
-                            guint      index_)
-{
-  g_ptr_array_set_free_func (array, NULL);
-  g_autoptr(GObject) obj = g_ptr_array_remove_index_fast (array, index_);
-  g_ptr_array_set_free_func (array, (GDestroyNotify) g_object_unref);
-
-  return g_steal_pointer (&obj);
 }
 
 static void
