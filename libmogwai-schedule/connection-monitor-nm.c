@@ -278,7 +278,7 @@ connection_connect (MwsConnectionMonitorNm *self,
   g_signal_connect_data (connection, "changed",
                          (GCallback) connection_changed_cb,
                          setting_notify_data_new (self, active_connection),
-                         (GClosureNotify) connection_changed_data_free,
+                         connection_changed_data_free,
                          0  /* flags */);
 }
 

@@ -89,7 +89,7 @@ teardown (Fixture       *fixture,
   /* Clear the signal logger first so we don’t accidentally log signals from
    * the other objects while we finalise them. */
   mws_signal_logger_assert_no_emissions (fixture->scheduler_signals);
-  g_clear_pointer (&fixture->scheduler_signals, (GDestroyNotify) mws_signal_logger_free);
+  g_clear_pointer (&fixture->scheduler_signals, mws_signal_logger_free);
 
   g_clear_object (&fixture->scheduler);
   g_clear_object (&fixture->clock);
