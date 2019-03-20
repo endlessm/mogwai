@@ -501,8 +501,8 @@ schedule_entry_invalidate (MwscScheduleEntry *self,
 }
 
 static gboolean
-check_invalidated (MwscScheduleEntry *self,
-                   GTask             *task)
+check_invalidated_with_task (MwscScheduleEntry *self,
+                             GTask             *task)
 {
   /* Invalidated? */
   if (self->proxy == NULL)
@@ -1024,7 +1024,7 @@ mwsc_schedule_entry_send_properties_async (MwscScheduleEntry   *self,
   g_autoptr(GTask) task = g_task_new (self, cancellable, callback, user_data);
   g_task_set_source_tag (task, mwsc_schedule_entry_send_properties_async);
 
-  if (!check_invalidated (self, task))
+  if (!check_invalidated_with_task (self, task))
     return;
 
   g_autoptr(SendPropertiesData) data = g_new0 (SendPropertiesData, 1);
@@ -1171,7 +1171,7 @@ mwsc_schedule_entry_remove_async (MwscScheduleEntry   *self,
   g_autoptr(GTask) task = g_task_new (self, cancellable, callback, user_data);
   g_task_set_source_tag (task, mwsc_schedule_entry_remove_async);
 
-  if (!check_invalidated (self, task))
+  if (!check_invalidated_with_task (self, task))
     return;
 
   g_dbus_proxy_call (self->proxy,

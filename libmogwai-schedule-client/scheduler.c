@@ -424,8 +424,8 @@ scheduler_invalidate (MwscScheduler *self,
 }
 
 static gboolean
-check_invalidated (MwscScheduler *self,
-                   GTask         *task)
+check_invalidated_with_task (MwscScheduler *self,
+                             GTask         *task)
 {
   /* Invalidated? */
   if (self->proxy == NULL)
@@ -840,7 +840,7 @@ mwsc_scheduler_schedule_async (MwscScheduler       *self,
   g_autoptr(GTask) task = g_task_new (self, cancellable, callback, user_data);
   g_task_set_source_tag (task, mwsc_scheduler_schedule_async);
 
-  if (!check_invalidated (self, task))
+  if (!check_invalidated_with_task (self, task))
     return;
 
   g_autoptr(GPtrArray) parameters_array = g_ptr_array_new_with_free_func (NULL);
@@ -971,7 +971,7 @@ mwsc_scheduler_schedule_entries_async (MwscScheduler       *self,
   g_autoptr(GTask) task = g_task_new (self, cancellable, callback, user_data);
   g_task_set_source_tag (task, mwsc_scheduler_schedule_entries_async);
 
-  if (!check_invalidated (self, task))
+  if (!check_invalidated_with_task (self, task))
     return;
 
   g_auto(GVariantBuilder) builder = G_VARIANT_BUILDER_INIT (G_VARIANT_TYPE ("(aa{sv})"));
@@ -1137,7 +1137,7 @@ mwsc_scheduler_hold_async (MwscScheduler       *self,
   g_autoptr(GTask) task = g_task_new (self, cancellable, callback, user_data);
   g_task_set_source_tag (task, mwsc_scheduler_hold_async);
 
-  if (!check_invalidated (self, task))
+  if (!check_invalidated_with_task (self, task))
     return;
 
   /* Check whether we already hold the scheduler. */
@@ -1249,7 +1249,7 @@ mwsc_scheduler_release_async (MwscScheduler       *self,
   g_autoptr(GTask) task = g_task_new (self, cancellable, callback, user_data);
   g_task_set_source_tag (task, mwsc_scheduler_release_async);
 
-  if (!check_invalidated (self, task))
+  if (!check_invalidated_with_task (self, task))
     return;
 
   /* Check whether we would still hold the scheduler after releasing. */
@@ -1338,7 +1338,7 @@ mwsc_scheduler_get_allow_downloads (MwscScheduler *self)
 {
   g_return_val_if_fail (MWSC_IS_SCHEDULER (self), TRUE);
 
-  if (!check_invalidated (self, NULL))
+  if (!check_invalidated_with_task (self, NULL))
     return TRUE;
 
   g_autoptr(GVariant) allow_downloads_variant = NULL;
