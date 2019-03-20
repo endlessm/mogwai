@@ -1,6 +1,6 @@
 /* -*- mode: C; c-file-style: "gnu"; indent-tabs-mode: nil; -*-
  *
- * Copyright © 2018 Endless Mobile, Inc.
+ * Copyright © 2018, 2019 Endless Mobile, Inc.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -58,10 +58,18 @@ GQuark mwsc_scheduler_error_quark (void);
 #define MWSC_TYPE_SCHEDULER mwsc_scheduler_get_type ()
 G_DECLARE_FINAL_TYPE (MwscScheduler, mwsc_scheduler, MWSC, SCHEDULER, GObject)
 
+MwscScheduler     *mwsc_scheduler_new             (GCancellable         *cancellable,
+                                                   GError              **error);
 void               mwsc_scheduler_new_async       (GCancellable         *cancellable,
                                                    GAsyncReadyCallback   callback,
                                                    gpointer              user_data);
 MwscScheduler     *mwsc_scheduler_new_finish      (GAsyncResult         *result,
+                                                   GError              **error);
+
+MwscScheduler     *mwsc_scheduler_new_full        (GDBusConnection      *connection,
+                                                   const gchar          *name,
+                                                   const gchar          *object_path,
+                                                   GCancellable         *cancellable,
                                                    GError              **error);
 void               mwsc_scheduler_new_full_async  (GDBusConnection      *connection,
                                                    const gchar          *name,
@@ -75,6 +83,10 @@ MwscScheduler     *mwsc_scheduler_new_full_finish (GAsyncResult         *result,
 MwscScheduler     *mwsc_scheduler_new_from_proxy  (GDBusProxy           *proxy,
                                                    GError              **error);
 
+MwscScheduleEntry *mwsc_scheduler_schedule        (MwscScheduler        *self,
+                                                   GVariant             *parameters,
+                                                   GCancellable         *cancellable,
+                                                   GError              **error);
 void               mwsc_scheduler_schedule_async  (MwscScheduler        *self,
                                                    GVariant             *parameters,
                                                    GCancellable         *cancellable,
@@ -84,6 +96,10 @@ MwscScheduleEntry *mwsc_scheduler_schedule_finish (MwscScheduler        *self,
                                                    GAsyncResult         *result,
                                                    GError              **error);
 
+GPtrArray         *mwsc_scheduler_schedule_entries        (MwscScheduler        *self,
+                                                           GPtrArray            *parameters,
+                                                           GCancellable         *cancellable,
+                                                           GError              **error);
 void               mwsc_scheduler_schedule_entries_async  (MwscScheduler        *self,
                                                            GPtrArray            *parameters,
                                                            GCancellable         *cancellable,
@@ -93,6 +109,10 @@ GPtrArray         *mwsc_scheduler_schedule_entries_finish (MwscScheduler        
                                                            GAsyncResult         *result,
                                                            GError              **error);
 
+gboolean           mwsc_scheduler_hold           (MwscScheduler        *self,
+                                                  const gchar          *reason,
+                                                  GCancellable         *cancellable,
+                                                  GError              **error);
 void               mwsc_scheduler_hold_async     (MwscScheduler        *self,
                                                   const gchar          *reason,
                                                   GCancellable         *cancellable,
@@ -100,6 +120,10 @@ void               mwsc_scheduler_hold_async     (MwscScheduler        *self,
                                                   gpointer              user_data);
 gboolean           mwsc_scheduler_hold_finish    (MwscScheduler        *self,
                                                   GAsyncResult         *result,
+                                                  GError              **error);
+
+gboolean           mwsc_scheduler_release        (MwscScheduler        *self,
+                                                  GCancellable         *cancellable,
                                                   GError              **error);
 void               mwsc_scheduler_release_async  (MwscScheduler        *self,
                                                   GCancellable         *cancellable,

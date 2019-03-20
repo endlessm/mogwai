@@ -73,10 +73,11 @@ async_result_cb (GObject      *obj,
   *result_out = g_object_ref (result);
 }
 
-/* Test constructing an #MwscScheduleEntry object with invalid arguments. */
+/* Test asynchronously constructing an #MwscScheduleEntry object with invalid
+ * arguments. */
 static void
-test_service_construction_error (Fixture       *fixture,
-                                 gconstpointer  test_data)
+test_service_construction_async_error (Fixture       *fixture,
+                                       gconstpointer  test_data)
 {
   g_autoptr(GAsyncResult) result = NULL;
   g_autoptr(GError) error = NULL;
@@ -98,6 +99,25 @@ test_service_construction_error (Fixture       *fixture,
   g_assert_null (entry);
 }
 
+/* Test synchronously constructing an #MwscScheduleEntry object with invalid
+ * arguments. */
+static void
+test_service_construction_sync_error (Fixture       *fixture,
+                                      gconstpointer  test_data)
+{
+  g_autoptr(MwscScheduleEntry) entry = NULL;
+  g_autoptr(GError) error = NULL;
+
+  entry = mwsc_schedule_entry_new_full (fixture->connection,
+                                        "com.endlessm.MogwaiSchedule1.Nonexistent",
+                                        "/com/endlessm/DownloadManager1/Nonexistent",
+                                        NULL,  /* cancellable */
+                                        &error);
+  g_assert_error (error, MWSC_SCHEDULE_ENTRY_ERROR,
+                  MWSC_SCHEDULE_ENTRY_ERROR_UNKNOWN_ENTRY);
+  g_assert_null (entry);
+}
+
 int
 main (int    argc,
       char **argv)
@@ -105,8 +125,10 @@ main (int    argc,
   setlocale (LC_ALL, "");
   g_test_init (&argc, &argv, NULL);
 
-  g_test_add ("/schedule-entry/construction/error", Fixture, NULL, setup,
-              test_service_construction_error, teardown);
+  g_test_add ("/schedule-entry/construction/async/error", Fixture, NULL, setup,
+              test_service_construction_async_error, teardown);
+  g_test_add ("/schedule-entry/construction/sync/error", Fixture, NULL, setup,
+              test_service_construction_sync_error, teardown);
 
   return g_test_run ();
 }

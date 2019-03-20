@@ -1,6 +1,6 @@
 /* -*- mode: C; c-file-style: "gnu"; indent-tabs-mode: nil; -*-
  *
- * Copyright © 2018 Endless Mobile, Inc.
+ * Copyright © 2018, 2019 Endless Mobile, Inc.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -53,6 +53,11 @@ GQuark mwsc_schedule_entry_error_quark (void);
 #define MWSC_TYPE_SCHEDULE_ENTRY mwsc_schedule_entry_get_type ()
 G_DECLARE_FINAL_TYPE (MwscScheduleEntry, mwsc_schedule_entry, MWSC, SCHEDULE_ENTRY, GObject)
 
+MwscScheduleEntry  *mwsc_schedule_entry_new_full         (GDBusConnection      *connection,
+                                                          const gchar          *name,
+                                                          const gchar          *object_path,
+                                                          GCancellable         *cancellable,
+                                                          GError              **error);
 void                mwsc_schedule_entry_new_full_async   (GDBusConnection      *connection,
                                                           const gchar          *name,
                                                           const gchar          *object_path,
@@ -76,6 +81,9 @@ gboolean            mwsc_schedule_entry_get_resumable    (MwscScheduleEntry    *
 void                mwsc_schedule_entry_set_resumable    (MwscScheduleEntry    *self,
                                                           gboolean              resumable);
 
+gboolean mwsc_schedule_entry_send_properties        (MwscScheduleEntry    *self,
+                                                     GCancellable         *cancellable,
+                                                     GError              **error);
 void     mwsc_schedule_entry_send_properties_async  (MwscScheduleEntry    *self,
                                                      GCancellable         *cancellable,
                                                      GAsyncReadyCallback   callback,
@@ -84,6 +92,9 @@ gboolean mwsc_schedule_entry_send_properties_finish (MwscScheduleEntry    *self,
                                                      GAsyncResult         *result,
                                                      GError              **error);
 
+gboolean mwsc_schedule_entry_remove        (MwscScheduleEntry    *self,
+                                            GCancellable         *cancellable,
+                                            GError              **error);
 void     mwsc_schedule_entry_remove_async  (MwscScheduleEntry    *self,
                                             GCancellable         *cancellable,
                                             GAsyncReadyCallback   callback,

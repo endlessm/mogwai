@@ -1,6 +1,6 @@
 /* -*- mode: C; c-file-style: "gnu"; indent-tabs-mode: nil; -*-
  *
- * Copyright © 2018 Endless Mobile, Inc.
+ * Copyright © 2018, 2019 Endless Mobile, Inc.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -440,6 +440,21 @@ check_invalidated_with_task (MwscScheduler *self,
   return TRUE;
 }
 
+static gboolean
+check_invalidated_with_error (MwscScheduler  *self,
+                              GError        **error)
+{
+  /* Invalidated? */
+  if (self->proxy == NULL)
+    {
+      g_set_error (error, MWSC_SCHEDULER_ERROR, MWSC_SCHEDULER_ERROR_INVALIDATED,
+                   _("Scheduler has been invalidated."));
+      return FALSE;
+    }
+
+  return TRUE;
+}
+
 static void
 proxy_notify_name_owner_cb (GObject    *obj,
                             GParamSpec *pspec,
@@ -573,6 +588,19 @@ mwsc_scheduler_init_failable (GInitable     *initable,
     }
   else
     {
+      g_assert (self->proxy == NULL);
+      self->proxy = g_dbus_proxy_new_sync (self->connection,
+                                           G_DBUS_PROXY_FLAGS_NONE,
+                                           (GDBusInterfaceInfo *) &scheduler_interface,
+                                           self->name, self->object_path,
+                                           "com.endlessm.DownloadManager1.Scheduler",
+                                           cancellable, error);
+      if (self->proxy == NULL)
+        {
+          self->init_success = FALSE;
+          return FALSE;
+        }
+
       return set_up_proxy (self, error);
     }
 }
@@ -641,6 +669,35 @@ mwsc_scheduler_new_from_proxy (GDBusProxy  *proxy,
                          "object-path", g_dbus_proxy_get_object_path (proxy),
                          "proxy", proxy,
                          NULL);
+}
+
+/**
+ * mwsc_scheduler_new:
+ * @cancellable: (nullable): a #GCancellable, or %NULL
+ * @error: return location for a #GError, or %NULL
+ *
+ * Synchronous version of mwsc_scheduler_new_async().
+ *
+ * Returns: (transfer full): initialised #MwscScheduler, or %NULL on error
+ * Since: 0.2.0
+ */
+MwscScheduler *
+mwsc_scheduler_new (GCancellable  *cancellable,
+                    GError       **error)
+{
+  g_autoptr(GDBusConnection) connection = NULL;
+
+  g_return_val_if_fail (cancellable == NULL || G_IS_CANCELLABLE (cancellable), NULL);
+  g_return_val_if_fail (error == NULL || *error == NULL, NULL);
+
+  connection = g_bus_get_sync (G_BUS_TYPE_SYSTEM, cancellable, error);
+  if (connection == NULL)
+    return NULL;
+
+  return mwsc_scheduler_new_full (connection,
+                                  "com.endlessm.MogwaiSchedule1",
+                                  "/com/endlessm/DownloadManager1",
+                                  cancellable, error);
 }
 
 static void get_bus_cb (GObject      *obj,
@@ -734,6 +791,43 @@ mwsc_scheduler_new_finish (GAsyncResult  *result,
 }
 
 /**
+ * mwsc_scheduler_new_full:
+ * @connection: D-Bus connection to use
+ * @name: (nullable): well-known or unique name of the peer to proxy from, or
+ *    %NULL if @connection is not a message bus connection
+ * @object_path: path of the object to proxy
+ * @cancellable: (nullable): a #GCancellable, or %NULL
+ * @error: return location for a #GError, or %NULL
+ *
+ * Synchronous version of mwsc_scheduler_new_full_async().
+ *
+ * Returns: (transfer full): initialised #MwscScheduler, or %NULL on error
+ * Since: 0.2.0
+ */
+MwscScheduler *
+mwsc_scheduler_new_full (GDBusConnection  *connection,
+                         const gchar      *name,
+                         const gchar      *object_path,
+                         GCancellable     *cancellable,
+                         GError          **error)
+{
+  g_return_val_if_fail (G_IS_DBUS_CONNECTION (connection), NULL);
+  g_return_val_if_fail (name == NULL || g_dbus_is_name (name), NULL);
+  g_return_val_if_fail ((g_dbus_connection_get_unique_name (connection) == NULL) ==
+                        (name == NULL), NULL);
+  g_return_val_if_fail (object_path != NULL &&
+                        g_variant_is_object_path (object_path), NULL);
+  g_return_val_if_fail (cancellable == NULL || G_IS_CANCELLABLE (cancellable), NULL);
+  g_return_val_if_fail (error == NULL || *error == NULL, NULL);
+
+  return g_initable_new (MWSC_TYPE_SCHEDULER, cancellable, error,
+                         "connection", connection,
+                         "name", name,
+                         "object-path", object_path,
+                         NULL);
+}
+
+/**
  * mwsc_scheduler_new_full_async:
  * @connection: D-Bus connection to use
  * @name: (nullable): well-known or unique name of the peer to proxy from, or
@@ -810,6 +904,46 @@ ptr_array_steal_index_fast (GPtrArray *array,
   g_ptr_array_set_free_func (array, (GDestroyNotify) g_object_unref);
 
   return g_steal_pointer (&obj);
+}
+
+/**
+ * mwsc_scheduler_schedule:
+ * @self: a #MwscScheduler
+ * @parameters: (nullable): #GVariant of type `a{sv}` giving initial parameters
+ *    for the schedule entry
+ * @cancellable: (nullable): a #GCancellable, or %NULL
+ * @error: return location for a #GError, or %NULL
+ *
+ * Synchronous version of mwsc_scheduler_schedule_async().
+ *
+ * Returns: (transfer full): the new #MwscScheduleEntry
+ * Since: 0.2.0
+ */
+MwscScheduleEntry *
+mwsc_scheduler_schedule (MwscScheduler  *self,
+                         GVariant       *parameters,
+                         GCancellable   *cancellable,
+                         GError        **error)
+{
+  g_return_val_if_fail (MWSC_IS_SCHEDULER (self), NULL);
+  g_return_val_if_fail (parameters == NULL ||
+                        (g_variant_is_normal_form (parameters) &&
+                         g_variant_is_of_type (parameters, G_VARIANT_TYPE_VARDICT)), NULL);
+  g_return_val_if_fail (cancellable == NULL || G_IS_CANCELLABLE (cancellable), NULL);
+  g_return_val_if_fail (error == NULL || *error == NULL, NULL);
+
+  if (!check_invalidated_with_error (self, error))
+    return NULL;
+
+  g_autoptr(GPtrArray) parameters_array = g_ptr_array_new_with_free_func (NULL);
+  g_ptr_array_add (parameters_array, parameters);
+
+  g_autoptr(GPtrArray) entries = NULL;
+  entries = mwsc_scheduler_schedule_entries (self, parameters_array,
+                                             cancellable, error);
+
+  g_assert (entries->len == 1);
+  return ptr_array_steal_index_fast (entries, 0);
 }
 
 static void schedule_cb (GObject      *obj,
@@ -911,6 +1045,100 @@ mwsc_scheduler_schedule_finish (MwscScheduler  *self,
   return g_task_propagate_pointer (G_TASK (result), error);
 }
 
+/* Returns a floating reference. */
+static GVariant *
+parameters_to_variant (GPtrArray *parameters)
+{
+  g_auto(GVariantBuilder) builder = G_VARIANT_BUILDER_INIT (G_VARIANT_TYPE ("(aa{sv})"));
+  g_variant_builder_open (&builder, G_VARIANT_TYPE ("aa{sv}"));
+
+  for (gsize i = 0; i < parameters->len; i++)
+    {
+      GVariant *variant = g_ptr_array_index (parameters, i);
+
+      if (variant == NULL)
+        variant = g_variant_new ("a{sv}", NULL);
+
+      g_return_val_if_fail (g_variant_is_normal_form (variant) &&
+                            g_variant_is_of_type (variant, G_VARIANT_TYPE_VARDICT),
+                            NULL);
+
+      g_variant_builder_add_value (&builder, variant);
+    }
+
+  g_variant_builder_close (&builder);
+
+  return g_variant_builder_end (&builder);
+}
+
+/**
+ * mwsc_scheduler_schedule_entries:
+ * @self: a #MwscScheduler
+ * @parameters: non-empty array of #GVariants of type `a{sv}` giving initial
+ *    parameters for each of the schedule entries
+ * @cancellable: (nullable): a #GCancellable, or %NULL
+ * @error: return location for a #GError, or %NULL
+ *
+ * Synchronous version of mwsc_scheduler_schedule_entries_async().
+ *
+ * Returns: (transfer full) (element-type MwscScheduleEntry): an non-empty array
+ *    of the new #MwscScheduleEntrys
+ * Since: 0.2.0
+ */
+GPtrArray *
+mwsc_scheduler_schedule_entries (MwscScheduler  *self,
+                                 GPtrArray      *parameters,
+                                 GCancellable   *cancellable,
+                                 GError        **error)
+{
+  g_return_val_if_fail (MWSC_IS_SCHEDULER (self), NULL);
+  g_return_val_if_fail (parameters != NULL && parameters->len > 0, NULL);
+  g_return_val_if_fail (cancellable == NULL || G_IS_CANCELLABLE (cancellable), NULL);
+  g_return_val_if_fail (error == NULL || *error != NULL, NULL);
+
+  if (!check_invalidated_with_error (self, error))
+    return NULL;
+
+  /* Grab the schedule entries. */
+  g_autoptr(GVariant) return_value = NULL;
+  return_value = g_dbus_proxy_call_sync (self->proxy,
+                                         "ScheduleEntries",
+                                         parameters_to_variant (parameters),
+                                         G_DBUS_CALL_FLAGS_NONE,
+                                         -1,  /* default timeout */
+                                         cancellable,
+                                         error);
+
+  if (return_value == NULL)
+    return NULL;
+
+  /* Start constructing the entries in parallel. */
+  g_autoptr(GVariantIter) iter = NULL;
+  const gchar *schedule_entry_path;
+  g_variant_get (return_value, "(ao)", &iter);
+
+  g_autoptr(GPtrArray) entries = NULL;
+  entries = g_ptr_array_new_with_free_func (g_object_unref);
+
+  while (g_variant_iter_loop (iter, "&o", &schedule_entry_path))
+    {
+      g_autoptr(MwscScheduleEntry) entry = NULL;
+
+      entry = mwsc_schedule_entry_new_full (g_dbus_proxy_get_connection (self->proxy),
+                                            g_dbus_proxy_get_name (self->proxy),
+                                            schedule_entry_path,
+                                            cancellable,
+                                            error);
+
+      if (entry == NULL)
+        return NULL;
+
+      g_ptr_array_add (entries, g_steal_pointer (&entry));
+    }
+
+  return g_steal_pointer (&entries);
+}
+
 typedef struct
 {
   gsize n_entries;
@@ -974,27 +1202,9 @@ mwsc_scheduler_schedule_entries_async (MwscScheduler       *self,
   if (!check_invalidated_with_task (self, task))
     return;
 
-  g_auto(GVariantBuilder) builder = G_VARIANT_BUILDER_INIT (G_VARIANT_TYPE ("(aa{sv})"));
-  g_variant_builder_open (&builder, G_VARIANT_TYPE ("aa{sv}"));
-
-  for (gsize i = 0; i < parameters->len; i++)
-    {
-      GVariant *variant = g_ptr_array_index (parameters, i);
-
-      if (variant == NULL)
-        variant = g_variant_new ("a{sv}", NULL);
-
-      g_return_if_fail (g_variant_is_normal_form (variant) &&
-                        g_variant_is_of_type (variant, G_VARIANT_TYPE_VARDICT));
-
-      g_variant_builder_add_value (&builder, variant);
-    }
-
-  g_variant_builder_close (&builder);
-
   g_dbus_proxy_call (self->proxy,
                      "ScheduleEntries",
-                     g_variant_builder_end (&builder),
+                     parameters_to_variant (parameters),
                      G_DBUS_CALL_FLAGS_NONE,
                      -1,  /* default timeout */
                      cancellable,
@@ -1094,6 +1304,65 @@ mwsc_scheduler_schedule_entries_finish (MwscScheduler  *self,
   g_return_val_if_fail (error == NULL || *error == NULL, NULL);
 
   return g_task_propagate_pointer (G_TASK (result), error);
+}
+
+/**
+ * mwsc_scheduler_hold:
+ * @self: a #MwscScheduler
+ * @reason: (nullable): reason for holding the daemon, or %NULL to provide none
+ * @cancellable: (nullable): a #GCancellable, or %NULL
+ * @error: return location for a #GError, or %NULL
+ *
+ * Synchronous version of mwsc_scheduler_hold_async().
+ *
+ * Returns: %TRUE on success, %FALSE otherwise
+ * Since: 0.2.0
+ */
+gboolean
+mwsc_scheduler_hold (MwscScheduler  *self,
+                     const gchar    *reason,
+                     GCancellable   *cancellable,
+                     GError        **error)
+{
+  g_return_val_if_fail (MWSC_IS_SCHEDULER (self), FALSE);
+  g_return_val_if_fail (cancellable == NULL || G_IS_CANCELLABLE (cancellable), FALSE);
+  g_return_val_if_fail (error == NULL || *error == NULL, FALSE);
+
+  g_return_val_if_fail (self->hold_count < G_MAXUINT, FALSE);
+
+  if (!check_invalidated_with_error (self, error))
+    return FALSE;
+
+  /* Check whether we already hold the scheduler. */
+  if (self->hold_count++ > 0)
+    {
+      g_debug ("Already hold scheduler");
+      return TRUE;
+    }
+
+  /* Hold the scheduler over D-Bus. */
+  g_debug ("Holding scheduler over D-Bus with reason: %s", reason);
+
+  if (reason == NULL)
+    reason = "";
+
+  g_autoptr(GVariant) return_value = NULL;
+  return_value = g_dbus_proxy_call_sync (self->proxy,
+                                         "Hold",
+                                         g_variant_new ("(s)", reason),
+                                         G_DBUS_CALL_FLAGS_NONE,
+                                         -1,  /* default timeout */
+                                         cancellable,
+                                         error);
+
+  if (return_value == NULL)
+    {
+      g_assert (self->hold_count > 0);
+      self->hold_count--;
+      return FALSE;
+    }
+
+  return TRUE;
 }
 
 static void hold_cb (GObject      *obj,
@@ -1212,6 +1481,60 @@ mwsc_scheduler_hold_finish (MwscScheduler  *self,
   g_return_val_if_fail (error == NULL || *error == NULL, FALSE);
 
   return g_task_propagate_boolean (G_TASK (result), error);
+}
+
+/**
+ * mwsc_scheduler_release:
+ * @self: a #MwscScheduler
+ * @cancellable: (nullable): a #GCancellable, or %NULL
+ * @error: return location for a #GError, or %NULL
+ *
+ * Synchronous version of mwsc_scheduler_release_async().
+ *
+ * Returns: %TRUE on success, %FALSE otherwise
+ * Since: 0.2.0
+ */
+gboolean
+mwsc_scheduler_release (MwscScheduler  *self,
+                        GCancellable   *cancellable,
+                        GError        **error)
+{
+  g_return_val_if_fail (MWSC_IS_SCHEDULER (self), FALSE);
+  g_return_val_if_fail (cancellable == NULL || G_IS_CANCELLABLE (cancellable), FALSE);
+  g_return_val_if_fail (error == NULL || *error == NULL, FALSE);
+
+  g_return_val_if_fail (self->hold_count > 0, FALSE);
+
+  if (!check_invalidated_with_error (self, error))
+    return FALSE;
+
+  /* Check whether we would still hold the scheduler after releasing. */
+  if (--self->hold_count > 0)
+    {
+      g_debug ("Still hold scheduler");
+      return TRUE;
+    }
+
+  /* Release the scheduler over D-Bus. */
+  g_debug ("Releasing scheduler over D-Bus");
+
+  g_autoptr(GVariant) return_value = NULL;
+  return_value = g_dbus_proxy_call_sync (self->proxy,
+                                         "Release",
+                                         NULL,  /* no arguments */
+                                         G_DBUS_CALL_FLAGS_NONE,
+                                         -1,  /* default timeout */
+                                         cancellable,
+                                         error);
+
+  if (return_value == NULL)
+    {
+      g_assert (self->hold_count < G_MAXUINT);
+      self->hold_count++;
+      return FALSE;
+    }
+
+  return TRUE;
 }
 
 static void release_cb (GObject      *obj,
