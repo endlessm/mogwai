@@ -271,6 +271,13 @@ connection_changed_data_free (ConnectionChangedData *data)
 }
 
 static void
+connection_changed_data_closure_notify (gpointer  data,
+                                        GClosure *closure)
+{
+  connection_changed_data_free (data);
+}
+
+static void
 connection_connect (MwsConnectionMonitorNm *self,
                     NMConnection           *connection,
                     NMActiveConnection     *active_connection)
@@ -278,7 +285,7 @@ connection_connect (MwsConnectionMonitorNm *self,
   g_signal_connect_data (connection, "changed",
                          (GCallback) connection_changed_cb,
                          setting_notify_data_new (self, active_connection),
-                         connection_changed_data_free,
+                         connection_changed_data_closure_notify,
                          0  /* flags */);
 }
 
