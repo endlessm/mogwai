@@ -29,6 +29,16 @@ import unittest
 import taptestrunner
 
 
+def normalise_output(out):
+    '''Normalise output from a mogwai subprocess.
+
+    It’s outputted in UTF-8, may contain a trailing newline, and may contain
+    non-breaking spaces in size strings such as ‘2.0 MB’. GLib versions around
+    2.60 introduce this; older versions used an ASCII space.
+    '''
+    return out.decode('utf-8').strip().replace(u'\u00A0', ' ')
+
+
 class TestMogwaiTariff(unittest.TestCase):
     """Integration test for running mogwai-tariff.
 
@@ -85,7 +95,7 @@ class TestMogwaiTariff(unittest.TestCase):
         # Dump the tariff.
         info = self.runMogwaiTariff('dump', 'tariff0')
         info.check_returncode()
-        out = info.stdout.decode('utf-8').strip()
+        out = normalise_output(info.stdout)
         self.assertIn(
             'Tariff ‘tariff0’\n'
             '----------------\n'
@@ -98,7 +108,7 @@ class TestMogwaiTariff(unittest.TestCase):
         info = self.runMogwaiTariff('lookup', 'tariff0',
                                     '2017-01-01T01:00:00Z')
         info.check_returncode()
-        out = info.stdout.decode('utf-8').strip()
+        out = normalise_output(info.stdout)
         self.assertIn(
             'Period 2017-01-01T00:00:00+00 – 2018-01-01T00:00:00+00:\n'
             ' • Repeats every 2 years\n'
@@ -108,7 +118,7 @@ class TestMogwaiTariff(unittest.TestCase):
         # tariff.
         info = self.runMogwaiTariff('lookup', 'tariff0',
                                     '2000-01-05T00:00:05Z')
-        out = info.stdout.decode('utf-8').strip()
+        out = normalise_output(info.stdout)
         self.assertIn('No period matches the given date/time.', out)
         self.assertEqual(info.returncode, 2)  # EXIT_LOOKUP_FAILED
 
@@ -129,7 +139,7 @@ class TestMogwaiTariff(unittest.TestCase):
 
         info = self.runMogwaiTariff('dump', 'tariff1')
         info.check_returncode()
-        out = info.stdout.decode('utf-8').strip()
+        out = normalise_output(info.stdout)
         self.assertIn(
             'Tariff ‘tariff1’\n'
             '----------------\n'
@@ -154,7 +164,7 @@ class TestMogwaiTariff(unittest.TestCase):
 
         info = self.runMogwaiTariff('dump', 'tz')
         info.check_returncode()
-        out = info.stdout.decode('utf-8').strip()
+        out = normalise_output(info.stdout)
         self.assertIn(
             'Tariff ‘tz’\n'
             '-----------\n'

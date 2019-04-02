@@ -1,6 +1,6 @@
 /* -*- mode: C; c-file-style: "gnu"; indent-tabs-mode: nil; -*-
  *
- * Copyright © 2018 Endless Mobile, Inc.
+ * Copyright © 2018, 2019 Endless Mobile, Inc.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -501,8 +501,8 @@ schedule_entry_invalidate (MwscScheduleEntry *self,
 }
 
 static gboolean
-check_invalidated (MwscScheduleEntry *self,
-                   GTask             *task)
+check_invalidated_with_task (MwscScheduleEntry *self,
+                             GTask             *task)
 {
   /* Invalidated? */
   if (self->proxy == NULL)
@@ -511,6 +511,23 @@ check_invalidated (MwscScheduleEntry *self,
                                MWSC_SCHEDULE_ENTRY_ERROR_INVALIDATED,
                                _("Schedule entry ‘%s’ has been invalidated."),
                                mwsc_schedule_entry_get_id (self));
+      return FALSE;
+    }
+
+  return TRUE;
+}
+
+static gboolean
+check_invalidated_with_error (MwscScheduleEntry  *self,
+                              GError            **error)
+{
+  /* Invalidated? */
+  if (self->proxy == NULL)
+    {
+      g_set_error (error, MWSC_SCHEDULE_ENTRY_ERROR,
+                   MWSC_SCHEDULE_ENTRY_ERROR_INVALIDATED,
+                   _("Schedule entry ‘%s’ has been invalidated."),
+                   mwsc_schedule_entry_get_id (self));
       return FALSE;
     }
 
@@ -702,6 +719,19 @@ mwsc_schedule_entry_init_failable (GInitable     *initable,
     }
   else
     {
+      g_assert (self->proxy == NULL);
+      self->proxy = g_dbus_proxy_new_sync (self->connection,
+                                           G_DBUS_PROXY_FLAGS_NONE,
+                                           (GDBusInterfaceInfo *) &schedule_entry_interface,
+                                           self->name, self->object_path,
+                                           "com.endlessm.DownloadManager1.ScheduleEntry",
+                                           cancellable, error);
+      if (self->proxy == NULL)
+        {
+          self->init_success = FALSE;
+          return FALSE;
+        }
+
       return set_up_proxy (self, error);
     }
 }
@@ -770,6 +800,43 @@ mwsc_schedule_entry_new_from_proxy (GDBusProxy  *proxy,
                          "name", g_dbus_proxy_get_name (proxy),
                          "object-path", g_dbus_proxy_get_object_path (proxy),
                          "proxy", proxy,
+                         NULL);
+}
+
+/**
+ * mwsc_schedule_entry_new_full:
+ * @connection: D-Bus connection to use
+ * @name: (nullable): well-known or unique name of the peer to proxy from, or
+ *    %NULL if @connection is not a message bus connection
+ * @object_path: path of the object to proxy
+ * @cancellable: (nullable): a #GCancellable, or %NULL
+ * @error: return location for a #GError, or %NULL
+ *
+ * Synchronous version of mwsc_schedule_entry_new_full_async().
+ *
+ * Returns: (transfer full): initialised #MwscScheduleEntry, or %NULL on error
+ * Since: 0.2.0
+ */
+MwscScheduleEntry *
+mwsc_schedule_entry_new_full (GDBusConnection  *connection,
+                              const gchar      *name,
+                              const gchar      *object_path,
+                              GCancellable     *cancellable,
+                              GError          **error)
+{
+  g_return_val_if_fail (G_IS_DBUS_CONNECTION (connection), NULL);
+  g_return_val_if_fail (name == NULL || g_dbus_is_name (name), NULL);
+  g_return_val_if_fail ((g_dbus_connection_get_unique_name (connection) == NULL) ==
+                        (name == NULL), NULL);
+  g_return_val_if_fail (object_path != NULL &&
+                        g_variant_is_object_path (object_path), NULL);
+  g_return_val_if_fail (cancellable == NULL || G_IS_CANCELLABLE (cancellable), NULL);
+  g_return_val_if_fail (error == NULL || *error == NULL, NULL);
+
+  return g_initable_new (MWSC_TYPE_SCHEDULE_ENTRY, cancellable, error,
+                         "connection", connection,
+                         "name", name,
+                         "object-path", object_path,
                          NULL);
 }
 
@@ -970,6 +1037,87 @@ mwsc_schedule_entry_set_resumable (MwscScheduleEntry *self,
   g_object_notify (G_OBJECT (self), "resumable");
 }
 
+static gboolean queue_send_properties_sync (GDBusProxy   *proxy,
+                                            const gchar  *property_name,
+                                            GVariant     *property_value,
+                                            GCancellable *cancellable);
+
+/**
+ * mwsc_schedule_entry_send_properties:
+ * @self: a #MwscScheduleEntry
+ * @cancellable: (nullable): a #GCancellable, or %NULL
+ * @error: return location for a #GError, or %NULL
+ *
+ * Synchronous version of mwsc_schedule_entry_send_properties_async().
+ *
+ * Returns: %TRUE on success, %FALSE otherwise
+ * Since: 0.2.0
+ */
+gboolean
+mwsc_schedule_entry_send_properties (MwscScheduleEntry  *self,
+                                     GCancellable       *cancellable,
+                                     GError            **error)
+{
+  gboolean success;
+
+  g_return_val_if_fail (MWSC_IS_SCHEDULE_ENTRY (self), FALSE);
+  g_return_val_if_fail (cancellable == NULL || G_IS_CANCELLABLE (cancellable), FALSE);
+  g_return_val_if_fail (error == NULL || *error == NULL, FALSE);
+
+  if (!check_invalidated_with_error (self, error))
+    return FALSE;
+
+  success = (queue_send_properties_sync (self->proxy,
+                                         "Priority", g_variant_new_uint32 (self->priority),
+                                         cancellable) &&
+             queue_send_properties_sync (self->proxy,
+                                         "Resumable", g_variant_new_boolean (self->resumable),
+                                         cancellable));
+
+  if (!success)
+    {
+      g_set_error_literal (error, G_DBUS_ERROR, G_DBUS_ERROR_FAILED,
+                           _("Error sending updated properties to service."));
+      return FALSE;
+    }
+
+  return TRUE;
+}
+
+/* If @property_value is floating, it will be consumed. */
+static gboolean
+queue_send_properties_sync (GDBusProxy    *proxy,
+                            const gchar   *property_name,
+                            GVariant      *property_value,
+                            GCancellable  *cancellable)
+{
+  g_autoptr(GVariant) sunk_property_value = g_variant_ref_sink (property_value);
+
+  g_autoptr(GVariant) cached_property_value = NULL;
+  cached_property_value = g_dbus_proxy_get_cached_property (proxy, property_name);
+  g_assert (cached_property_value != NULL);
+
+  if (g_variant_equal (cached_property_value, sunk_property_value))
+    return TRUE;
+
+  g_autoptr(GVariant) return_value =
+      g_dbus_connection_call_sync (g_dbus_proxy_get_connection (proxy),
+                                   g_dbus_proxy_get_name (proxy),
+                                   g_dbus_proxy_get_object_path (proxy),
+                                   "org.freedesktop.DBus.Properties",
+                                   "Set",
+                                   g_variant_new ("(ssv)",
+                                                  "com.endlessm.DownloadManager1.ScheduleEntry",
+                                                  property_name,
+                                                  sunk_property_value),
+                                   NULL,  /* no reply type */
+                                   G_DBUS_CALL_FLAGS_NO_AUTO_START,
+                                   -1,  /* default timeout */
+                                   cancellable,
+                                   NULL);
+  return (return_value != NULL);
+}
+
 typedef struct
 {
   guint n_properties;
@@ -1024,7 +1172,7 @@ mwsc_schedule_entry_send_properties_async (MwscScheduleEntry   *self,
   g_autoptr(GTask) task = g_task_new (self, cancellable, callback, user_data);
   g_task_set_source_tag (task, mwsc_schedule_entry_send_properties_async);
 
-  if (!check_invalidated (self, task))
+  if (!check_invalidated_with_task (self, task))
     return;
 
   g_autoptr(SendPropertiesData) data = g_new0 (SendPropertiesData, 1);
@@ -1137,6 +1285,41 @@ mwsc_schedule_entry_send_properties_finish (MwscScheduleEntry  *self,
   return g_task_propagate_boolean (G_TASK (result), error);
 }
 
+/**
+ * mwsc_schedule_entry_remove:
+ * @self: a #MwscScheduleEntry
+ * @cancellable: (nullable): a #GCancellable, or %NULL
+ * @error: return location for a #GError, or %NULL
+ *
+ * Synchronous version of mwsc_schedule_entry_remove_async().
+ *
+ * Returns: %TRUE on success, %FALSE otherwise
+ * Since: 0.2.0
+ */
+gboolean
+mwsc_schedule_entry_remove (MwscScheduleEntry  *self,
+                            GCancellable       *cancellable,
+                            GError            **error)
+{
+  g_return_val_if_fail (MWSC_IS_SCHEDULE_ENTRY (self), FALSE);
+  g_return_val_if_fail (cancellable == NULL || G_IS_CANCELLABLE (cancellable), FALSE);
+  g_return_val_if_fail (error == NULL || *error == NULL, FALSE);
+
+  if (!check_invalidated_with_error (self, error))
+    return FALSE;
+
+  g_autoptr(GVariant) return_value = NULL;
+  return_value = g_dbus_proxy_call_sync (self->proxy,
+                                         "Remove",
+                                         NULL,  /* no parameters */
+                                         G_DBUS_CALL_FLAGS_NO_AUTO_START,
+                                         -1,  /* default timeout */
+                                         cancellable,
+                                         error);
+
+  return (return_value != NULL);
+}
+
 static void remove_cb (GObject      *obj,
                        GAsyncResult *result,
                        gpointer      user_data);
@@ -1171,7 +1354,7 @@ mwsc_schedule_entry_remove_async (MwscScheduleEntry   *self,
   g_autoptr(GTask) task = g_task_new (self, cancellable, callback, user_data);
   g_task_set_source_tag (task, mwsc_schedule_entry_remove_async);
 
-  if (!check_invalidated (self, task))
+  if (!check_invalidated_with_task (self, task))
     return;
 
   g_dbus_proxy_call (self->proxy,
