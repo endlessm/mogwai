@@ -941,6 +941,8 @@ mwsc_scheduler_schedule (MwscScheduler  *self,
   g_autoptr(GPtrArray) entries = NULL;
   entries = mwsc_scheduler_schedule_entries (self, parameters_array,
                                              cancellable, error);
+  if (entries == NULL)
+    return NULL;
 
   g_assert (entries->len == 1);
   return ptr_array_steal_index_fast (entries, 0);
@@ -1094,7 +1096,7 @@ mwsc_scheduler_schedule_entries (MwscScheduler  *self,
   g_return_val_if_fail (MWSC_IS_SCHEDULER (self), NULL);
   g_return_val_if_fail (parameters != NULL && parameters->len > 0, NULL);
   g_return_val_if_fail (cancellable == NULL || G_IS_CANCELLABLE (cancellable), NULL);
-  g_return_val_if_fail (error == NULL || *error != NULL, NULL);
+  g_return_val_if_fail (error == NULL || *error == NULL, NULL);
 
   if (!check_invalidated_with_error (self, error))
     return NULL;
