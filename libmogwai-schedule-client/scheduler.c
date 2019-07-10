@@ -1096,7 +1096,7 @@ mwsc_scheduler_schedule_entries (MwscScheduler  *self,
   g_return_val_if_fail (MWSC_IS_SCHEDULER (self), NULL);
   g_return_val_if_fail (parameters != NULL && parameters->len > 0, NULL);
   g_return_val_if_fail (cancellable == NULL || G_IS_CANCELLABLE (cancellable), NULL);
-  g_return_val_if_fail (error == NULL || *error != NULL, NULL);
+  g_return_val_if_fail (error == NULL || *error == NULL, NULL);
 
   if (!check_invalidated_with_error (self, error))
     return NULL;
