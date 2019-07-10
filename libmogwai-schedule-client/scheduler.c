@@ -941,6 +941,8 @@ mwsc_scheduler_schedule (MwscScheduler  *self,
   g_autoptr(GPtrArray) entries = NULL;
   entries = mwsc_scheduler_schedule_entries (self, parameters_array,
                                              cancellable, error);
+  if (entries == NULL)
+    return NULL;
 
   g_assert (entries->len == 1);
   return ptr_array_steal_index_fast (entries, 0);
