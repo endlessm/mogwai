@@ -53,6 +53,13 @@ static void active_connection_added_cb           (NMClient           *client,
 static void active_connection_removed_cb         (NMClient           *client,
                                                   NMActiveConnection *active_connection,
                                                   gpointer            user_data);
+static void active_connection_notify_cb          (GObject            *obj,
+                                                  GParamSpec         *pspec,
+                                                  gpointer            user_data);
+static void active_connection_state_changed_cb   (NMActiveConnection *active_connection,
+                                                  guint               new_state,
+                                                  guint               reason,
+                                                  gpointer            user_data);
 static void device_added_cb                      (NMClient           *client,
                                                   NMDevice           *device,
                                                   gpointer            user_data);
@@ -216,14 +223,28 @@ active_connection_connect (MwsConnectionMonitorNm *self,
                            NMActiveConnection     *active_connection)
 {
   NMConnection *connection = NM_CONNECTION (nm_active_connection_get_connection (active_connection));
-  connection_connect (self, connection, active_connection);
+
+  g_signal_connect (active_connection, "state-changed",
+                    (GCallback) active_connection_state_changed_cb, self);
+  g_signal_connect (active_connection, "notify", (GCallback) active_connection_notify_cb, self);
+
+  /* @connection may be %NULL if the @active_connection is in state
+   * #NM_ACTIVE_CONNECTION_STATE_ACTIVATING */
+  if (connection != NULL)
+    connection_connect (self, connection, active_connection);
 }
 
 static void
-active_connection_disconnect (NMActiveConnection *active_connection)
+active_connection_disconnect (MwsConnectionMonitorNm *self,
+                              NMActiveConnection     *active_connection)
 {
   NMConnection *connection = NM_CONNECTION (nm_active_connection_get_connection (active_connection));
-  connection_disconnect (connection);
+
+  if (connection != NULL)
+    connection_disconnect (connection);
+
+  g_signal_handlers_disconnect_by_func (active_connection, active_connection_state_changed_cb, self);
+  g_signal_handlers_disconnect_by_func (active_connection, active_connection_notify_cb, self);
 }
 
 static void
@@ -613,7 +634,7 @@ mws_connection_monitor_nm_get_connection_details (MwsConnectionMonitor *monitor,
   MwsMetered devices_metered = MWS_METERED_UNKNOWN;
 
   NMConnection *connection = NM_CONNECTION (nm_active_connection_get_connection (active_connection));
-  NMSettingConnection *setting = nm_connection_get_setting_connection (connection);
+  NMSettingConnection *setting = (connection != NULL) ? nm_connection_get_setting_connection (connection) : NULL;
 
   if (setting != NULL)
     connection_metered =
@@ -634,7 +655,7 @@ mws_connection_monitor_nm_get_connection_details (MwsConnectionMonitor *monitor,
    * set on the #NMSettingUser for the primary connection by
    * gnome-control-center, and may be absent. */
   NMSettingUser *setting_user =
-      NM_SETTING_USER (nm_connection_get_setting (connection, NM_TYPE_SETTING_USER));
+      (connection != NULL) ? NM_SETTING_USER (nm_connection_get_setting (connection, NM_TYPE_SETTING_USER)) : NULL;
 
   /* TODO: If we want to load a default value from eos-autoupdater.conf (see
    * https://phabricator.endlessm.com/T20818#542708), we should plumb it in here
@@ -745,11 +766,62 @@ active_connection_removed_cb (NMClient           *client,
   g_debug ("%s: Removing active connection ‘%s’.", G_STRFUNC, id);
 
   g_clear_pointer (&self->cached_connection_ids, g_strfreev);
-  active_connection_disconnect (active_connection);
+  active_connection_disconnect (self, active_connection);
 
   g_autoptr(GPtrArray) removed = g_ptr_array_new_with_free_func (NULL);
   g_ptr_array_add (removed, (gpointer) id);
   g_signal_emit_by_name (self, "connections-changed", NULL, removed);
+}
+
+static void
+active_connection_notify_cb (GObject    *obj,
+                             GParamSpec *pspec,
+                             gpointer    user_data)
+{
+  MwsConnectionMonitorNm *self = MWS_CONNECTION_MONITOR_NM (user_data);
+  NMActiveConnection *active_connection = NM_ACTIVE_CONNECTION (obj);
+  NMConnection *connection = NM_CONNECTION (nm_active_connection_get_connection (active_connection));
+
+  const gchar *active_connection_id = NULL;
+  active_connection_id = nm_active_connection_get_id (active_connection);
+
+  g_debug ("%s: Active connection ‘%s’ notifying property ‘%s’.",
+           G_STRFUNC, active_connection_id,
+           (pspec != NULL) ? g_param_spec_get_name (pspec) : "(all)");
+
+  if (connection != NULL)
+    connection_connect (self, connection, active_connection);
+
+  if (g_cancellable_is_cancelled (self->cancellable))
+    return;
+
+  /* Don’t bother working out what changed; just assume that it will probably
+   * change our scheduling. */
+  g_signal_emit_by_name (self, "connection-details-changed", active_connection_id);
+}
+
+static void
+active_connection_state_changed_cb (NMActiveConnection *active_connection,
+                                    guint               new_state,
+                                    guint               reason,
+                                    gpointer            user_data)
+{
+  MwsConnectionMonitorNm *self = MWS_CONNECTION_MONITOR_NM (user_data);
+  NMConnection *connection = NM_CONNECTION (nm_active_connection_get_connection (active_connection));
+
+  const gchar *active_connection_id = NULL;
+  active_connection_id = nm_active_connection_get_id (active_connection);
+
+  g_debug ("%s: Active connection ‘%s’ state changed to %u (reason: %u).",
+           G_STRFUNC, active_connection_id, new_state, reason);
+
+  if (connection != NULL)
+    connection_connect (self, connection, active_connection);
+
+  if (g_cancellable_is_cancelled (self->cancellable))
+    return;
+
+  g_signal_emit_by_name (self, "connection-details-changed", active_connection_id);
 }
 
 static void
