@@ -540,7 +540,7 @@ test_scheduler_scheduling_peer_priorities (Fixture       *fixture,
 
   /* Set up the peer credentials. */
   mws_peer_manager_dummy_set_peer_credentials (MWS_PEER_MANAGER_DUMMY (fixture->peer_manager),
-                                               ":eos.updater", "/usr/bin/eos-updater");
+                                               ":eos.updater", "/usr/libexec/eos-updater");
   mws_peer_manager_dummy_set_peer_credentials (MWS_PEER_MANAGER_DUMMY (fixture->peer_manager),
                                                ":gnome.software", "/usr/bin/gnome-software");
   mws_peer_manager_dummy_set_peer_credentials (MWS_PEER_MANAGER_DUMMY (fixture->peer_manager),

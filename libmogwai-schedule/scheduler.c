@@ -872,7 +872,7 @@ get_peer_priority (MwsScheduler     *self,
   /* The OS and app updaters are equally as important as each other. The actual
    * priority numbers chosen here are fairly arbitrary; it’s the partial order
    * over them which is important. */
-  if (g_str_equal (owner_path, "/usr/bin/eos-updater") ||
+  if (g_str_equal (owner_path, "/usr/libexec/eos-updater") ||
       g_str_equal (owner_path, "/usr/bin/gnome-software"))
     return G_MAXINT;
 
