@@ -1,6 +1,6 @@
 project('mogwai','c',
   version: '0.2.0',
-  meson_version: '>= 0.46.0',
+  meson_version: '>= 0.50.0',
   license: 'LGPLv2.1+',
   default_options: [
     'c_std=gnu11',
