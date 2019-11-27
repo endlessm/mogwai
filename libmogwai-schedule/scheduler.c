@@ -1001,7 +1001,7 @@ mws_scheduler_reschedule (MwsScheduler *self)
                           (GDestroyNotify) mws_connection_details_clear);
   g_array_set_size (all_connection_details, n_connections);
 
-  gboolean cached_allow_downloads = FALSE;
+  gboolean cached_allow_downloads = TRUE;
 
   for (gsize i = 0; all_connection_ids[i] != NULL; i++)
     {
@@ -1019,7 +1019,10 @@ mws_scheduler_reschedule (MwsScheduler *self)
           continue;
         }
 
-      cached_allow_downloads = cached_allow_downloads || out_details->allow_downloads;
+      /* FIXME: See FIXME below by `can_be_active` about allowing clients to
+       * specify whether they support downloading from selective connections.
+       * If that logic changes, so does this. */
+      cached_allow_downloads = cached_allow_downloads && out_details->allow_downloads;
     }
 
   if (self->cached_allow_downloads != cached_allow_downloads)
