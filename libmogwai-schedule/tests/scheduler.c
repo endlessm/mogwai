@@ -821,6 +821,8 @@ test_scheduler_scheduling_metered_connection (Fixture       *fixture,
       g_test_message ("Transition test %" G_GSIZE_FORMAT " of %" G_GSIZE_FORMAT,
                       i + 1, G_N_ELEMENTS (transitions));
 
+      gboolean initial_allow_downloads = mws_scheduler_get_allow_downloads (fixture->scheduler);
+
       /* Set up the connections in state 1. */
       g_autoptr(GHashTable) state1_connections =
           g_hash_table_new_full (g_str_hash, g_str_equal, g_free, NULL);
@@ -838,7 +840,7 @@ test_scheduler_scheduling_metered_connection (Fixture       *fixture,
       mws_connection_monitor_dummy_update_connections (MWS_CONNECTION_MONITOR_DUMMY (fixture->connection_monitor),
                                                        state1_connections, NULL);
 
-      if (transitions[i].state1_expected_allow_downloads)
+      if (transitions[i].state1_expected_allow_downloads != initial_allow_downloads)
         mws_signal_logger_assert_emission_pop (fixture->scheduler_signals,
                                                fixture->scheduler,
                                                "notify::allow-downloads", NULL);
@@ -1145,6 +1147,8 @@ test_scheduler_scheduling_tariff (Fixture       *fixture,
       g_test_message ("Transition test %" G_GSIZE_FORMAT " of %" G_GSIZE_FORMAT,
                       i + 1, G_N_ELEMENTS (transitions));
 
+      gboolean initial_allow_downloads = mws_scheduler_get_allow_downloads (fixture->scheduler);
+
       /* Set the time in state 1. */
       mws_clock_dummy_set_time_zone (MWS_CLOCK_DUMMY (fixture->clock), state1_tz);
       mws_clock_dummy_set_time (MWS_CLOCK_DUMMY (fixture->clock), state1_time);
@@ -1174,9 +1178,10 @@ test_scheduler_scheduling_tariff (Fixture       *fixture,
                                                        state1_connections, NULL);
 
       /* Due to the test setup, we always expect allow-downloads=true. */
-      mws_signal_logger_assert_emission_pop (fixture->scheduler_signals,
-                                             fixture->scheduler,
-                                             "notify::allow-downloads", NULL);
+      if (!initial_allow_downloads)
+        mws_signal_logger_assert_emission_pop (fixture->scheduler_signals,
+                                               fixture->scheduler,
+                                               "notify::allow-downloads", NULL);
       mws_signal_logger_assert_no_emissions (fixture->scheduler_signals);
 
       /* Add a single entry to the scheduler. */

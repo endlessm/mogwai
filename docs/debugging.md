@@ -47,3 +47,20 @@ $ # add Environment=G_MESSAGES_DEBUG=all
 $ sudo systemctl restart mogwai-scheduled.service
 $ sudo journalctl -b -u mogwai-scheduled.service
 ```
+
+Changing the settings on a connection
+---
+
+When debugging, it can sometimes be useful to forcibly change the metered data
+settings on a NetworkManager connection. This can be done by editing the
+connection’s configuration file in `/etc/NetworkManager/system-connections/`:
+add `connection.allow-downloads=0` or `connection.allow-downloads-when-metered=0`
+to it. Then run:
+```
+sudo nmcli connection down "${connection_name}"
+sudo nmcli connection up "${connection_name}"
+```
+
+You can check that Mogwai has detected the change by running
+`mogwai-schedule-client-1 monitor` as you do this; it will print a line saying
+that `allow-downloads` has changed.
