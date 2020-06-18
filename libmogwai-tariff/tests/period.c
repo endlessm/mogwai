@@ -616,7 +616,7 @@ test_period_contains_time (void)
       /* More DST checks. There’s a DST switch on 2018-10-28 in Europe/London,
        * where the clocks go backward 1h at 02:00, so the period 01:00–01:59
        * happens twice (once in the daylight savings timezone, once outside it).
-       * We expect a recurrence to fall on the first occurence of those hours,
+       * We expect a recurrence to fall on the first occurrence of those hours,
        * but not the second (since that’s not a week later).
        * In this test, we sometimes express the timezone as ±hh to make it clear
        * which side of the DST switch a time is on: the times
