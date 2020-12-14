@@ -209,6 +209,8 @@ periods_sort_cb (gconstpointer a,
 MwtTariff *
 mwt_tariff_builder_get_tariff (MwtTariffBuilder *self)
 {
+  g_autoptr(GError) local_error = NULL;
+
   g_return_val_if_fail (MWT_IS_TARIFF_BUILDER (self), NULL);
 
   /* If we haven’t constructed the final tariff yet, try. If it fails, just
@@ -219,8 +221,11 @@ mwt_tariff_builder_get_tariff (MwtTariffBuilder *self)
       /* Ensure the periods are in order. */
       g_ptr_array_sort (self->periods, periods_sort_cb);
 
-      if (!mwt_tariff_validate (self->name, self->periods, NULL))
-        return NULL;
+      if (!mwt_tariff_validate (self->name, self->periods, &local_error))
+        {
+          g_debug ("Invalid tariff: %s", local_error->message);
+          return NULL;
+        }
       self->final_tariff = mwt_tariff_new (self->name, self->periods);
     }
 
