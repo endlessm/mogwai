@@ -116,6 +116,29 @@ mws_signal_logger_emission_free (MwsSignalLoggerEmission *emission)
   g_free (emission);
 }
 
+/* Version of G_VALUE_LCOPY() that allows %NULL return locations. */
+#define VALUE_LCOPY(value, var_args, __error) \
+G_STMT_START { \
+  const GValue *_value = (value); \
+  GType _value_type = G_VALUE_TYPE (_value); \
+  GTypeValueTable *_vtable = g_type_value_table_peek (_value_type); \
+  const gchar *_lcopy_format = _vtable->lcopy_format; \
+  GTypeCValue _cvalues[G_VALUE_COLLECT_FORMAT_MAX_LENGTH] = { { 0, }, }; \
+  guint _n_values = 0; \
+  \
+  while (*_lcopy_format != '\0') \
+    { \
+      g_assert (*_lcopy_format == G_VALUE_COLLECT_POINTER); \
+      _cvalues[_n_values++].v_pointer = va_arg ((var_args), gpointer); \
+      _lcopy_format++; \
+    } \
+  \
+  if (_n_values == 2 && !!_cvalues[0].v_pointer != !!_cvalues[1].v_pointer) \
+    *(__error) = g_strdup_printf ("all return locations need the same nullability"); \
+  else if (_cvalues[0].v_pointer != NULL) \
+    *(__error) = _vtable->lcopy_value (_value, _n_values, _cvalues, 0); \
+} G_STMT_END
+
 /**
  * mws_signal_logger_emission_get_params:
  * @self: a #MwsSignalLoggerEmission
@@ -141,7 +164,7 @@ mws_signal_logger_emission_get_params (MwsSignalLoggerEmission *self,
   for (gsize i = 0; i < self->n_param_values; i++)
     {
       g_autofree gchar *error_message = NULL;
-      G_VALUE_LCOPY (&self->param_values[i], ap, 0, &error_message);
+      VALUE_LCOPY (&self->param_values[i], ap, &error_message);
       
       /* Error messages are not fatal, as they typically indicate that the user
        * has passed in %NULL rather than a valid return pointer. We can recover
