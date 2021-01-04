@@ -6,7 +6,6 @@ Standards-Version: 4.1.2
 Build-Depends:
  debhelper (>= 10),
  dh-python,
- dh-systemd,
  libglib2.0-dev (>= 2.54.2-1endless3),
  libnm-dev (>= 1.8.0),
  libsoup2.4-dev (>= 2.42.0),
