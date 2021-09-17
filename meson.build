@@ -1,5 +1,5 @@
 project('mogwai','c',
-  version: '0.3.0',
+  version: '0.2.1',
   meson_version: '>= 0.50.0',
   license: 'LGPLv2.1+',
   default_options: [
