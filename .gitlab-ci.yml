@@ -24,7 +24,7 @@ debian-unstable:
     - tags
   script:
     # FIXME: Enable --werror once we don't have glib-2.0 as a subproject
-    - meson --buildtype debug -Db_coverage=true -Ddocumentation=true _build .
+    - meson --buildtype debug -Db_coverage=true _build .
     - meson test -C _build --no-suite glib-2.0
     - ninja -C _build coverage
   coverage: '/^\s+lines\.+:\s+([\d.]+\%)\s+/'
