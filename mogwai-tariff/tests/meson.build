@@ -43,5 +43,6 @@ foreach program: test_programs
     py3,
     args: main,
     env: envs,
+    depends: mogwai_tariff,
   )
 endforeach

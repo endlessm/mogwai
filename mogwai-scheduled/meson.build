@@ -11,7 +11,7 @@ mogwai_scheduled_deps = [
   libmogwai_schedule_dep,
 ]
 
-executable('mogwai-scheduled' + mogwai_scheduled_api_version,
+mogwai_scheduled = executable('mogwai-scheduled' + mogwai_scheduled_api_version,
   mogwai_scheduled_sources,
   dependencies: mogwai_scheduled_deps,
   include_directories: root_inc,
