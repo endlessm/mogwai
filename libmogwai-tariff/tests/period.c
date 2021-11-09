@@ -41,6 +41,18 @@ assert_period_validate (GDateTime           *start,
   g_assert_false (retval);
 }
 
+static GTimeZone *
+time_zone_new (const gchar *tz_str)
+{
+#if GLIB_CHECK_VERSION(2, 68, 0)
+  g_autoptr(GTimeZone) tz = g_time_zone_new_identifier (tz_str);
+  g_assert_nonnull (tz);
+  return g_steal_pointer (&tz);
+#else
+  return g_time_zone_new (tz_str);
+#endif
+}
+
 /* Test constructing a #MwtPeriod object with invalid arguments. */
 static void
 test_period_validation (void)
@@ -710,17 +722,17 @@ test_period_contains_time (void)
 
   for (gsize i = 0; i < G_N_ELEMENTS (vectors); i++)
     {
-      g_autoptr(GTimeZone) start_tz = g_time_zone_new (vectors[i].start_tz);
+      g_autoptr(GTimeZone) start_tz = time_zone_new (vectors[i].start_tz);
       g_autoptr(GDateTime) start =
           g_date_time_new (start_tz, vectors[i].start_year, vectors[i].start_month,
                            vectors[i].start_day, vectors[i].start_hour,
                            vectors[i].start_minute, vectors[i].start_seconds);
-      g_autoptr(GTimeZone) end_tz = g_time_zone_new (vectors[i].end_tz);
+      g_autoptr(GTimeZone) end_tz = time_zone_new (vectors[i].end_tz);
       g_autoptr(GDateTime) end =
           g_date_time_new (end_tz, vectors[i].end_year, vectors[i].end_month,
                            vectors[i].end_day, vectors[i].end_hour,
                            vectors[i].end_minute, vectors[i].end_seconds);
-      g_autoptr(GTimeZone) when_tz = g_time_zone_new (vectors[i].when_tz);
+      g_autoptr(GTimeZone) when_tz = time_zone_new (vectors[i].when_tz);
       g_autoptr(GDateTime) when =
           g_date_time_new (when_tz, vectors[i].when_year, vectors[i].when_month,
                            vectors[i].when_day, vectors[i].when_hour,
@@ -731,12 +743,12 @@ test_period_contains_time (void)
 
       if (vectors[i].expected_contains)
         {
-          g_autoptr(GTimeZone) expected_contains_start_tz = g_time_zone_new (vectors[i].expected_contains_start_tz);
+          g_autoptr(GTimeZone) expected_contains_start_tz = time_zone_new (vectors[i].expected_contains_start_tz);
           expected_contains_start =
               g_date_time_new (expected_contains_start_tz, vectors[i].expected_contains_start_year, vectors[i].expected_contains_start_month,
                                vectors[i].expected_contains_start_day, vectors[i].expected_contains_start_hour,
                                vectors[i].expected_contains_start_minute, vectors[i].expected_contains_start_seconds);
-          g_autoptr(GTimeZone) expected_contains_end_tz = g_time_zone_new (vectors[i].expected_contains_end_tz);
+          g_autoptr(GTimeZone) expected_contains_end_tz = time_zone_new (vectors[i].expected_contains_end_tz);
           expected_contains_end =
               g_date_time_new (expected_contains_end_tz, vectors[i].expected_contains_end_year, vectors[i].expected_contains_end_month,
                                vectors[i].expected_contains_end_day, vectors[i].expected_contains_end_hour,
@@ -748,12 +760,12 @@ test_period_contains_time (void)
 
       if (vectors[i].expected_next)
         {
-          g_autoptr(GTimeZone) expected_next_start_tz = g_time_zone_new (vectors[i].expected_next_start_tz);
+          g_autoptr(GTimeZone) expected_next_start_tz = time_zone_new (vectors[i].expected_next_start_tz);
           expected_next_start =
               g_date_time_new (expected_next_start_tz, vectors[i].expected_next_start_year, vectors[i].expected_next_start_month,
                                vectors[i].expected_next_start_day, vectors[i].expected_next_start_hour,
                                vectors[i].expected_next_start_minute, vectors[i].expected_next_start_seconds);
-          g_autoptr(GTimeZone) expected_next_end_tz = g_time_zone_new (vectors[i].expected_next_end_tz);
+          g_autoptr(GTimeZone) expected_next_end_tz = time_zone_new (vectors[i].expected_next_end_tz);
           expected_next_end =
               g_date_time_new (expected_next_end_tz, vectors[i].expected_next_end_year, vectors[i].expected_next_end_month,
                                vectors[i].expected_next_end_day, vectors[i].expected_next_end_hour,

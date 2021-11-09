@@ -915,9 +915,19 @@ static GTimeZone *
 time_zone_new (const gchar *tz_str)
 {
   if (tz_str != NULL)
-    return g_time_zone_new (tz_str);
+    {
+#if GLIB_CHECK_VERSION(2, 68, 0)
+      g_autoptr(GTimeZone) tz = g_time_zone_new_identifier (tz_str);
+      g_assert_nonnull (tz);
+      return g_steal_pointer (&tz);
+#else
+      return g_time_zone_new (tz_str);
+#endif
+    }
   else
-    return g_time_zone_new_utc ();
+    {
+      return g_time_zone_new_utc ();
+    }
 }
 
 /* Test the transitions between different tariffs, checking whether they cause a
