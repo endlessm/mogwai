@@ -48,6 +48,7 @@ libmogwai_schedule = static_library('mogwai-schedule-' + libmogwai_schedule_api_
 libmogwai_schedule_dep = declare_dependency(
   link_with: libmogwai_schedule,
   include_directories: root_inc,
+  dependencies: libmogwai_schedule_deps,
 )
 
 subdir('tests')
