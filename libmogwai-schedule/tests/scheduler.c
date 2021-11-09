@@ -911,6 +911,15 @@ test_scheduler_scheduling_metered_connection (Fixture       *fixture,
     }
 }
 
+static GTimeZone *
+time_zone_new (const gchar *tz_str)
+{
+  if (tz_str != NULL)
+    return g_time_zone_new (tz_str);
+  else
+    return g_time_zone_new_utc ();
+}
+
 /* Test the transitions between different tariffs, checking whether they cause a
  * single entry to be scheduled/unscheduled appropriately. Each test vector
  * provides two states of a set of tariffs, and two times. Either the set of
@@ -1102,9 +1111,7 @@ test_scheduler_scheduling_tariff (Fixture       *fixture,
        * given in UTC and converted to the stated timezone, so they represent
        * the same instant as the UTC time, but with a likely different wall
        * clock time. */
-      g_autoptr(GTimeZone) state1_tz =
-          (transitions[i].state1_tz != NULL) ? g_time_zone_new (transitions[i].state1_tz) :
-                                               g_time_zone_new_utc ();
+      g_autoptr(GTimeZone) state1_tz = time_zone_new (transitions[i].state1_tz);
       g_autoptr(GDateTime) state1_time_utc = g_date_time_new_utc (transitions[i].state1_year,
                                                                   transitions[i].state1_month,
                                                                   transitions[i].state1_day,
@@ -1114,9 +1121,7 @@ test_scheduler_scheduling_tariff (Fixture       *fixture,
       g_autoptr(GDateTime) state1_time = g_date_time_to_timezone (state1_time_utc,
                                                                   state1_tz);
 
-      g_autoptr(GTimeZone) state2_tz =
-          (transitions[i].state2_tz != NULL) ? g_time_zone_new (transitions[i].state2_tz) :
-                                               g_time_zone_new_utc ();
+      g_autoptr(GTimeZone) state2_tz = time_zone_new (transitions[i].state2_tz);
       g_autoptr(GDateTime) state2_time_utc = g_date_time_new_utc (transitions[i].state2_year,
                                                                   transitions[i].state2_month,
                                                                   transitions[i].state2_day,
