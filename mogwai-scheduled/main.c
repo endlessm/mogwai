@@ -24,7 +24,7 @@
 
 #include <glib.h>
 #include <glib/gi18n.h>
-#include <libhelper/service.h>
+#include <libgsystemservice/service.h>
 #include <libmogwai-schedule/service.h>
 #include <signal.h>
 
@@ -38,17 +38,17 @@ main (int   argc,
 
   /* Set up a D-Bus service and run until we are killed. */
   service = mws_service_new ();
-  hlp_service_run (HLP_SERVICE (service), argc, argv, &error);
+  gss_service_run (GSS_SERVICE (service), argc, argv, &error);
 
   if (error != NULL)
     {
       int code;
 
       if (g_error_matches (error,
-                           HLP_SERVICE_ERROR, HLP_SERVICE_ERROR_SIGNALLED))
-        raise (hlp_service_get_exit_signal (HLP_SERVICE (service)));
+                           GSS_SERVICE_ERROR, GSS_SERVICE_ERROR_SIGNALLED))
+        raise (gss_service_get_exit_signal (GSS_SERVICE (service)));
       else if (g_error_matches (error,
-                                HLP_SERVICE_ERROR, HLP_SERVICE_ERROR_TIMEOUT))
+                                GSS_SERVICE_ERROR, GSS_SERVICE_ERROR_TIMEOUT))
         {
           g_message ("Exiting due to reaching inactivity timeout");
           return 0;

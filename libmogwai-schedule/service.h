@@ -24,12 +24,12 @@
 
 #include <glib.h>
 #include <glib-object.h>
-#include <libhelper/service.h>
+#include <libgsystemservice/service.h>
 
 G_BEGIN_DECLS
 
 #define MWS_TYPE_SERVICE mws_service_get_type ()
-G_DECLARE_FINAL_TYPE (MwsService, mws_service, MWS, SERVICE, HlpService)
+G_DECLARE_FINAL_TYPE (MwsService, mws_service, MWS, SERVICE, GssService)
 
 MwsService *mws_service_new (void);
 

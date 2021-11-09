@@ -31,7 +31,7 @@ libmogwai_schedule_deps = [
   libglib_dep,
   dependency('gobject-2.0', version: '>= 2.54'),
   dependency('libnm', version: '>= 1.8.0'),
-  libhelper_dep,
+  dependency('gsystemservice-0', version: '>= 0.1.0'),
   libmogwai_tariff_dep,
 ]
 

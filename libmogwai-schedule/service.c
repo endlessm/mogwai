@@ -38,14 +38,14 @@
 
 static void mws_service_dispose (GObject *object);
 
-static void mws_service_startup_async (HlpService          *service,
+static void mws_service_startup_async (GssService          *service,
                                        GCancellable        *cancellable,
                                        GAsyncReadyCallback  callback,
                                        gpointer             user_data);
-static void mws_service_startup_finish (HlpService    *service,
+static void mws_service_startup_finish (GssService    *service,
                                         GAsyncResult  *result,
                                         GError       **error);
-static void mws_service_shutdown (HlpService *service);
+static void mws_service_shutdown (GssService *service);
 
 static void notify_busy_cb (GObject    *obj,
                             GParamSpec *pspec,
@@ -61,7 +61,7 @@ static void notify_busy_cb (GObject    *obj,
  */
 struct _MwsService
 {
-  HlpService parent;
+  GssService parent;
 
   MwsScheduler *scheduler;  /* (owned) */
   MwsScheduleService *schedule_service;  /* (owned) */
@@ -71,13 +71,13 @@ struct _MwsService
   gboolean busy;
 };
 
-G_DEFINE_TYPE (MwsService, mws_service, HLP_TYPE_SERVICE)
+G_DEFINE_TYPE (MwsService, mws_service, GSS_TYPE_SERVICE)
 
 static void
 mws_service_class_init (MwsServiceClass *klass)
 {
   GObjectClass *object_class = (GObjectClass *) klass;
-  HlpServiceClass *service_class = (HlpServiceClass *) klass;
+  GssServiceClass *service_class = (GssServiceClass *) klass;
 
   object_class->dispose = mws_service_dispose;
 
@@ -117,7 +117,7 @@ static void connection_monitor_new_cb (GObject      *source_object,
                                        gpointer      user_data);
 
 static void
-mws_service_startup_async (HlpService          *service,
+mws_service_startup_async (GssService          *service,
                            GCancellable        *cancellable,
                            GAsyncReadyCallback  callback,
                            gpointer             user_data)
@@ -147,7 +147,7 @@ connection_monitor_new_cb (GObject      *source_object,
       return;
     }
 
-  GDBusConnection *connection = hlp_service_get_dbus_connection (HLP_SERVICE (self));
+  GDBusConnection *connection = gss_service_get_dbus_connection (GSS_SERVICE (self));
 
   g_autoptr(MwsPeerManager) peer_manager = NULL;
   peer_manager = MWS_PEER_MANAGER (mws_peer_manager_dbus_new (connection));
@@ -169,7 +169,7 @@ connection_monitor_new_cb (GObject      *source_object,
 }
 
 static void
-mws_service_startup_finish (HlpService    *service,
+mws_service_startup_finish (GssService    *service,
                             GAsyncResult  *result,
                             GError       **error)
 {
@@ -190,15 +190,15 @@ notify_busy_cb (GObject    *obj,
            G_STRFUNC, was_busy ? "yes" : "no", now_busy ? "yes" : "no");
 
   if (was_busy && !now_busy)
-    hlp_service_release (HLP_SERVICE (self));
+    gss_service_release (GSS_SERVICE (self));
   else if (!was_busy && now_busy)
-    hlp_service_hold (HLP_SERVICE (self));
+    gss_service_hold (GSS_SERVICE (self));
 
   self->busy = now_busy;
 }
 
 static void
-mws_service_shutdown (HlpService *service)
+mws_service_shutdown (GssService *service)
 {
   MwsService *self = MWS_SERVICE (service);
 
