@@ -31,7 +31,7 @@ libmogwai_schedule_deps = [
   libglib_dep,
   dependency('gobject-2.0', version: '>= 2.54'),
   dependency('libnm', version: '>= 1.8.0'),
-  libhelper_dep,
+  dependency('gsystemservice-0', version: '>= 0.1.0'),
   libmogwai_tariff_dep,
 ]
 
@@ -48,6 +48,7 @@ libmogwai_schedule = static_library('mogwai-schedule-' + libmogwai_schedule_api_
 libmogwai_schedule_dep = declare_dependency(
   link_with: libmogwai_schedule,
   include_directories: root_inc,
+  dependencies: libmogwai_schedule_deps,
 )
 
 subdir('tests')

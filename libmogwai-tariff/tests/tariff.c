@@ -32,6 +32,18 @@
 #include "common.h"
 
 
+static GTimeZone *
+time_zone_new (const gchar *tz_str)
+{
+#if GLIB_CHECK_VERSION(2, 68, 0)
+  g_autoptr(GTimeZone) tz = g_time_zone_new_identifier (tz_str);
+  g_assert_nonnull (tz);
+  return g_steal_pointer (&tz);
+#else
+  return g_time_zone_new (tz_str);
+#endif
+}
+
 /* Test the GObject properties on a tariff. */
 static void
 test_tariff_properties (void)
@@ -493,7 +505,7 @@ test_tariff_next_transition (void)
 
   for (gsize i = 0; i < G_N_ELEMENTS (vectors); i++)
     {
-      g_autoptr(GTimeZone) after_tz = g_time_zone_new (vectors[i].after_tz);
+      g_autoptr(GTimeZone) after_tz = time_zone_new (vectors[i].after_tz);
       g_autoptr(GDateTime) after =
           g_date_time_new (after_tz, vectors[i].after_year, vectors[i].after_month,
                            vectors[i].after_day, vectors[i].after_hour,
@@ -503,7 +515,7 @@ test_tariff_next_transition (void)
 
       if (vectors[i].expected_next_tz != NULL)
         {
-          g_autoptr(GTimeZone) expected_next_tz = g_time_zone_new (vectors[i].expected_next_tz);
+          g_autoptr(GTimeZone) expected_next_tz = time_zone_new (vectors[i].expected_next_tz);
           expected_next =
               g_date_time_new (expected_next_tz, vectors[i].expected_next_year, vectors[i].expected_next_month,
                                vectors[i].expected_next_day, vectors[i].expected_next_hour,
@@ -579,9 +591,9 @@ test_tariff_serialisation_roundtrip (void)
   mwt_tariff_builder_set_name (builder, "test-tariff");
 
   /* Period 1. */
-  g_autoptr(GTimeZone) start1_tz = g_time_zone_new ("Europe/London");
+  g_autoptr(GTimeZone) start1_tz = time_zone_new ("Europe/London");
   g_autoptr(GDateTime) start1 = g_date_time_new (start1_tz, 2018, 1, 1, 0, 0, 0);
-  g_autoptr(GTimeZone) end1_tz = g_time_zone_new ("America/Atka");
+  g_autoptr(GTimeZone) end1_tz = time_zone_new ("America/Atka");
   g_autoptr(GDateTime) end1 = g_date_time_new (end1_tz, 2018, 2, 1, 0, 0, 0);
 
   g_autoptr(MwtPeriod) period1 = NULL;

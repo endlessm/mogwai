@@ -1,0 +1,5 @@
+[wrap-git]
+directory=gsystemservice-0
+url=https://gitlab.gnome.org/pwithnall/libgsystemservice.git
+revision=044e2f03ed80fb20fd133629f1c5f3f976d1bd9e
+depth=1

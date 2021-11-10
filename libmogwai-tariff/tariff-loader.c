@@ -191,17 +191,28 @@ date_time_new_from_unix (guint64      unix_timestamp,
   if (*timezone_identifier == '\0')
     tz = g_time_zone_new_local ();
   else
+#if GLIB_CHECK_VERSION(2, 68, 0)
+    tz = g_time_zone_new_identifier (timezone_identifier);
+#else
     tz = g_time_zone_new (timezone_identifier);
+#endif
+
+#if GLIB_CHECK_VERSION(2, 68, 0)
+  if (tz == NULL)
+    return NULL;
+#endif
 
   g_debug ("%s: Created timezone ‘%s’ for ‘%s’, with offset %d at interval 0",
            G_STRFUNC, g_time_zone_get_identifier (tz), timezone_identifier,
            g_time_zone_get_offset (tz, 0));
 
+#if !GLIB_CHECK_VERSION(2, 68, 0)
   /* Creating a timezone can’t actually fail, but if we fail to load the
    * timezone information, the #GTimeZone will just represent UTC. Catch that. */
   g_assert (tz != NULL);
   if (!g_str_equal (g_time_zone_get_identifier (tz), timezone_identifier))
     return NULL;
+#endif
 
   return g_date_time_to_timezone (utc, tz);
 }

@@ -103,7 +103,6 @@ test_env = [
   'LC_ALL=C.UTF-8',
 ]
 
-subdir('libhelper')
 subdir('libmogwai-tariff')
 subdir('libmogwai-schedule')
 subdir('libmogwai-schedule-client')

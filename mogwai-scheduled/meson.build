@@ -7,7 +7,7 @@ mogwai_scheduled_deps = [
   dependency('gio-2.0', version: '>= 2.44'),
   libglib_dep,
   dependency('gobject-2.0', version: '>= 2.44'),
-  libhelper_dep,
+  dependency('gsystemservice-0', version: '>= 0.1.0'),
   libmogwai_schedule_dep,
 ]
 
