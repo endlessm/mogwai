@@ -10,3 +10,9 @@ option(
   value: false,
   description: 'enable installed tests'
 )
+option(
+  'soup2',
+  type: 'boolean',
+  value: false,
+  description: 'build with libsoup2',
+)

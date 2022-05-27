@@ -6,7 +6,7 @@ mogwai_schedule_client_deps = [
   dependency('gio-2.0', version: '>= 2.44'),
   libglib_dep,
   dependency('gobject-2.0', version: '>= 2.44'),
-  dependency('libsoup-2.4', version: '>= 2.42'),
+  libsoup_dep,
   libmogwai_schedule_client_dep,
 ]
 
