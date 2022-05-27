@@ -44,7 +44,7 @@ Dependencies
  * gio-2.0 ≥ 2.57.1
  * glib-2.0 ≥ 2.57.1
  * gobject-2.0 ≥ 2.57.1
- * libsoup-2.4 ≥ 2.42
+ * libsoup-3.0
  * systemd
 
 Licensing
