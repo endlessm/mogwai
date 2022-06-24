@@ -13,6 +13,6 @@ option(
 option(
   'soup2',
   type: 'boolean',
-  value: false,
+  value: true,
   description: 'build with libsoup2',
 )
