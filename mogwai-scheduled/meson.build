@@ -39,13 +39,13 @@ configure_file(
 configure_file(
   input: 'mogwai-scheduled.conf.in',
   output: 'mogwai-scheduled.conf',
-  install_dir: dependency('systemd').get_pkgconfig_variable('sysusersdir'),
+  install_dir: dependency('libsystemd').get_pkgconfig_variable('sysusersdir'),
   configuration: config,
 )
 configure_file(
   input: 'mogwai-scheduled.service.in',
   output: 'mogwai-scheduled.service',
-  install_dir: dependency('systemd').get_pkgconfig_variable('systemdsystemunitdir'),
+  install_dir: dependency('libsystemd').get_pkgconfig_variable('systemdsystemunitdir'),
   configuration: config,
 )
 configure_file(

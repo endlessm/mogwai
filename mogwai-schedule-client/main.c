@@ -103,7 +103,9 @@ typedef struct
   gchar *uri;  /* (owned) */
   GFile *destination_file;  /* (owned) */
   SoupSession *session;  /* (owned) */
+#ifdef USE_LIBSOUP_2_4
   SoupRequest *request;  /* (owned) (nullable) */
+#endif
   MwscScheduleEntry *entry;  /* (owned) (nullable) */
   gulong entry_notify_download_now_id;
   GInputStream *request_stream;  /* (owned) (nullable) */
@@ -116,7 +118,9 @@ download_data_free (DownloadData *data)
   g_clear_object (&data->request_stream);
   g_assert (data->entry_notify_download_now_id == 0);
   g_clear_object (&data->entry);
+#ifdef USE_LIBSOUP_2_4
   g_clear_object (&data->request);
+#endif
   g_clear_object (&data->session);
   g_clear_object (&data->destination_file);
   g_clear_pointer (&data->uri, g_free);
@@ -286,10 +290,16 @@ start_download (GTask *task)
 {
   DownloadData *data = g_task_get_task_data (task);
   GCancellable *cancellable = g_task_get_cancellable (task);
+#ifdef USE_LIBSOUP_2_4
   g_autoptr(GError) error = NULL;
+#else
+  g_autoptr(SoupMessage) msg = NULL;
+#endif
 
   /* Start the download. */
   g_message ("Starting download of ‘%s’", data->uri);
+
+#ifdef USE_LIBSOUP_2_4
   data->request = soup_session_request (data->session, data->uri, &error);
 
   if (error != NULL)
@@ -299,6 +309,16 @@ start_download (GTask *task)
     }
 
   soup_request_send_async (data->request, cancellable, request_send_cb, g_object_ref (task));
+#else
+  msg = soup_message_new (SOUP_METHOD_GET, data->uri);
+
+  soup_session_send_async (data->session,
+                           msg,
+                           G_PRIORITY_DEFAULT,
+                           cancellable,
+                           request_send_cb,
+                           g_object_ref (task));
+#endif
 }
 
 static void
@@ -306,13 +326,21 @@ request_send_cb (GObject      *obj,
                  GAsyncResult *result,
                  gpointer      user_data)
 {
+#ifdef USE_LIBSOUP_2_4
   SoupRequest *request = SOUP_REQUEST (obj);
+#else
+  SoupSession *session = SOUP_SESSION (obj);
+#endif
   g_autoptr(GTask) task = G_TASK (user_data);
   DownloadData *data = g_task_get_task_data (task);
   GCancellable *cancellable = g_task_get_cancellable (task);
   g_autoptr(GError) error = NULL;
 
+#ifdef USE_LIBSOUP_2_4
   data->request_stream = soup_request_send_finish (request, result, &error);
+#else
+  data->request_stream = soup_session_send_finish (session, result, &error);
+#endif
 
   if (error != NULL)
     {

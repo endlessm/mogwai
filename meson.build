@@ -13,6 +13,14 @@ project('mogwai','c',
 libglib_dep = dependency('glib-2.0', version: '>= 2.57.1',
                          fallback: ['glib-2.0', 'libglib_dep'])
 
+# Support building against old or new libsoup APIs for now. Eventually support
+# for libsoup2.4 will be dropped.
+if get_option('soup2')
+  libsoup_dep = dependency('libsoup-2.4', version : '>= 2.42')
+else
+  libsoup_dep = dependency('libsoup-3.0', version : '>= 3.0')
+endif
+
 gnome = import('gnome')
 pkgconfig = import('pkgconfig')
 
@@ -26,6 +34,7 @@ includedir = join_paths(prefix, get_option('includedir'))
 config_h = configuration_data()
 config_h.set_quoted('GETTEXT_PACKAGE', meson.project_name())
 config_h.set_quoted('LOCALEDIR', localedir)
+config_h.set('USE_LIBSOUP_2_4', get_option('soup2'))
 configure_file(
   output: 'config.h',
   configuration: config_h,

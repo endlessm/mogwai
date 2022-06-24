@@ -5,7 +5,7 @@ before_script:
   - apt install -y -qq build-essential meson pkg-config gtk-doc-tools
                        libxml2-utils gobject-introspection
                        libgirepository1.0-dev libglib2.0-dev libsystemd-dev
-                       libsoup2.4-dev libnm-dev lcov python3-dbusmock
+                       libsoup-3.0-dev libnm-dev lcov python3-dbusmock
                        git gettext libelf-dev libmount-dev libpcre3-dev
                        libselinux1-dev zlib1g-dev libffi-dev
   - export LANG=C.UTF-8
