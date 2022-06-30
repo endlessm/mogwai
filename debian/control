@@ -14,6 +14,7 @@ Build-Depends:
  libsystemd-dev,
  meson,
  python3-dbusmock,
+ systemd,
 
 Package: mogwai-scheduled
 Section: misc
