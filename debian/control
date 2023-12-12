@@ -7,7 +7,7 @@ Build-Depends:
  debhelper (>= 10),
  dh-python,
  gtk-doc-tools,
- libglib2.0-dev (>= 2.54.2-1endless3),
+ libglib2.0-dev (>= 2.57.1),
  libgsystemservice-0-dev (>= 0.1.0),
  libnm-dev (>= 1.8.0),
  libsoup2.4-dev (>= 2.42.0),
