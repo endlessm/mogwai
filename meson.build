@@ -10,9 +10,8 @@ project('mogwai','c',
 
 # Dependency on GLib. We depend on 2.57.1, which isn’t packaged yet. When it
 # is packaged in Debian Unstable, we can drop this subproject dependency (FIXME).
-# FIXME: Endless’ GLib 2.54.2 has the necessary backported patches, so we drop
-# the subproject build to avoid ever accidentally using it.
-libglib_dep = dependency('glib-2.0', version: '>= 2.54.2')
+libglib_dep = dependency('glib-2.0', version: '>= 2.57.1',
+                         fallback: ['glib-2.0', 'libglib_dep'])
 
 # Support building against old or new libsoup APIs for now. Eventually support
 # for libsoup2.4 will be dropped.
