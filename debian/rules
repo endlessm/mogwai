@@ -8,7 +8,6 @@ override_dh_auto_configure:
 	dh_auto_configure \
 		-- \
 		-Dinstalled_tests=true \
-		-Dsoup2=true \
 		$(NULL)
 
 # Don't start the services on install
