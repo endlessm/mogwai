@@ -1022,6 +1022,9 @@ mws_scheduler_reschedule (MwsScheduler *self)
       /* FIXME: See FIXME below by `can_be_active` about allowing clients to
        * specify whether they support downloading from selective connections.
        * If that logic changes, so does this. */
+      cached_allow_downloads = cached_allow_downloads && (out_details->metered == MWS_METERED_NO ||
+                                                          out_details->metered == MWS_METERED_GUESS_NO ||
+                                                          out_details->allow_downloads_when_metered);
       cached_allow_downloads = cached_allow_downloads && out_details->allow_downloads;
     }
 
