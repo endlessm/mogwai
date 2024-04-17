@@ -774,13 +774,13 @@ test_scheduler_scheduling_metered_connection (Fixture       *fixture,
   transitions[] =
     {
       /* Transition from definitely metered to definitely unmetered. */
-      { { &connection_metered, }, TRUE, FALSE,
+      { { &connection_metered, }, FALSE, FALSE,
         { &connection_unmetered, }, TRUE, TRUE },
       /* Transition from maybe metered to definitely unmetered. */
-      { { &connection_maybe_metered, }, TRUE, FALSE,
+      { { &connection_maybe_metered, }, FALSE, FALSE,
         { &connection_unmetered, }, TRUE, TRUE },
       /* Transition from maybe metered to definitely unmetered. */
-      { { &connection_maybe_metered, }, TRUE, FALSE,
+      { { &connection_maybe_metered, }, FALSE, FALSE,
         { &connection_unmetered, }, TRUE, TRUE },
       /* Transition from definitely metered to definitely unmetered, but with
        * downloads disabled. */
@@ -790,23 +790,23 @@ test_scheduler_scheduling_metered_connection (Fixture       *fixture,
       { { &connection_unmetered, }, TRUE, TRUE,
         { &connection_metered_allow_downloads, }, TRUE, TRUE },
       /* Transition from metered to metered (but with downloads allowed). */
-      { { &connection_metered, }, TRUE, FALSE,
+      { { &connection_metered, }, FALSE, FALSE,
         { &connection_metered_allow_downloads, }, TRUE, TRUE },
       /* Transition from two definitely metered connections to having both of
        * them definitely unmetered. */
-      { { &connection_metered, &connection_metered }, TRUE, FALSE,
+      { { &connection_metered, &connection_metered }, FALSE, FALSE,
         { &connection_unmetered, &connection_unmetered, }, TRUE, TRUE },
       /* Transition from two definitely metered connections to having one of
        * them definitely unmetered. */
-      { { &connection_metered, &connection_metered }, TRUE, FALSE,
-        { &connection_metered, &connection_unmetered, }, TRUE, FALSE },
+      { { &connection_metered, &connection_metered }, FALSE, FALSE,
+        { &connection_metered, &connection_unmetered, }, FALSE, FALSE },
       /* Transition from a metered and an unmetered connection to having one of
        * them allow downloads. */
-      { { &connection_unmetered, &connection_metered }, TRUE, FALSE,
+      { { &connection_unmetered, &connection_metered }, FALSE, FALSE,
         { &connection_unmetered, &connection_metered_allow_downloads, }, TRUE, TRUE },
       /* Transition from a selection of connections to various unmetered ones
-       * with downloads disallowed. allow-downloads must become false. */
-      { { &connection_unmetered, &connection_metered, &connection_unmetered }, TRUE, FALSE,
+       * with downloads disallowed. allow-downloads must remain false. */
+      { { &connection_unmetered, &connection_metered, &connection_unmetered }, FALSE, FALSE,
         { &connection_unmetered_no_downloads, &connection_unmetered_no_downloads, &connection_unmetered_no_downloads }, FALSE, FALSE },
     };
 
